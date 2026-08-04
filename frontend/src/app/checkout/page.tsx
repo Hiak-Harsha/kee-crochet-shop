@@ -33,27 +33,35 @@ export default function CheckoutPage() {
   // Cart preview info
   const [cartPreview, setCartPreview] = useState<any>(null);
 
+  // Load Razorpay Checkout SDK dynamically on mount
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
   useEffect(() => {
     // Load cart summary
     const loadCartPreview = async () => {
       try {
         const data = await api.cart.get();
+        if (!data || !data.items || data.items.length === 0) {
+          setError("Your shopping bag is empty. Please add items to checkout.");
+          router.push("/cart");
+          return;
+        }
         setCartPreview(data);
-      } catch (e) {
-        // Mock fallback
-        setCartPreview({
-          items: [
-            {
-              quantity: 1,
-              product: { title: "Everlasting Pink Tulip Bouquet", price: 599.00 }
-            }
-          ],
-          subtotal: 599.00
-        });
+      } catch (e: any) {
+        console.error("Failed to load cart summary:", e);
+        setError("Failed to retrieve your shopping bag details. Please verify your connection.");
       }
     };
     loadCartPreview();
-  }, []);
+  }, [router]);
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,19 +89,72 @@ export default function CheckoutPage() {
     try {
       const order = await api.orders.create(payload);
       setCreatedOrder(order);
-      setShowRzpModal(true);
+
+      // Check if this is a mock order (sandbox mode when Razorpay credentials are not configured)
+      if (order.razorpay_order_id && order.razorpay_order_id.startsWith("rzp_mock")) {
+        setShowRzpModal(true);
+        setLoading(false);
+      } else {
+        // Trigger the REAL Razorpay Checkout SDK
+        if (!(window as any).Razorpay) {
+          throw new Error("Razorpay payment gateway SDK failed to load. Please verify your connection.");
+        }
+        
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_51P2c114389025",
+          amount: Math.round(order.total * 100), // Amount in paise
+          currency: "INR",
+          name: "Kee Crochet",
+          description: "Handcrafted Crochet Order Purchase",
+          order_id: order.razorpay_order_id,
+          handler: async function (response: any) {
+            setPaying(true);
+            try {
+              const verifyPayload = {
+                order_id: order.id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              };
+              await api.orders.verifyPayment(verifyPayload);
+              setPaymentSuccess(true);
+              
+              // Clear cart counts
+              localStorage.setItem("cart_count", "0");
+              window.dispatchEvent(new Event("cart-updated"));
+              
+              setTimeout(() => {
+                router.push("/dashboard?tab=orders");
+              }, 2000);
+            } catch (vErr: any) {
+              console.error("Payment verification failed:", vErr);
+              setError(vErr.message || "Payment verification failed. Please contact support.");
+            } finally {
+              setPaying(false);
+            }
+          },
+          prefill: {
+            name: fullName,
+            contact: phone,
+          },
+          theme: {
+            color: "#d97706",
+          },
+          modal: {
+            ondismiss: function () {
+              setLoading(false);
+              setError("Payment was cancelled by the user.");
+            },
+          },
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      }
     } catch (err: any) {
-      console.warn("Backend order creation failed, loading mock order object", err);
-      // Fallback Mock Order Object
-      setCreatedOrder({
-        id: "o_mock_12345",
-        order_number: `KC${Math.floor(100000 + Math.random() * 900000)}`,
-        total: (cartPreview?.subtotal || 599.00) + 60,
-        razorpay_order_id: "rzp_mock_order_12345"
-      });
-      setShowRzpModal(true);
+      console.error("Backend order creation failed:", err);
+      setError(err.message || "Failed to place order. Please review stock or details and try again.");
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleMockPaymentSuccess = async () => {
@@ -110,21 +171,22 @@ export default function CheckoutPage() {
 
     try {
       await api.orders.verifyPayment(verifyPayload);
-    } catch (e) {
-      console.warn("Backend verification bypassed in mock run", e);
+      setPaymentSuccess(true);
+      
+      // Clear cart counts
+      localStorage.setItem("cart_count", "0");
+      window.dispatchEvent(new Event("cart-updated"));
+
+      setTimeout(() => {
+        setShowRzpModal(false);
+        router.push("/dashboard?tab=orders");
+      }, 2000);
+    } catch (e: any) {
+      console.error("Mock payment verification failed", e);
+      setError(e.message || "Mock payment verification failed.");
+    } finally {
+      setPaying(false);
     }
-
-    setPaymentSuccess(true);
-    setPaying(false);
-    
-    // Clear cart counts
-    localStorage.setItem("cart_count", "0");
-    window.dispatchEvent(new Event("storage"));
-
-    setTimeout(() => {
-      setShowRzpModal(false);
-      router.push("/dashboard?tab=orders");
-    }, 2000);
   };
 
   const subtotal = cartPreview?.subtotal || 0;

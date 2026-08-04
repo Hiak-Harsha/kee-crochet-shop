@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Sparkles, LayoutDashboard, Plus, Eye, BarChart, ShoppingCart, RefreshCw, Upload, Instagram, Check, Copy } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Sparkles, LayoutDashboard, Plus, Eye, BarChart, ShoppingCart, RefreshCw, Upload, Instagram, Check, Copy, AlertCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 
 export default function AdminPage() {
+  const router = useRouter();
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
   const [activeTab, setActiveTab] = useState<"analytics" | "products" | "orders" | "social">("analytics");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Admin Data lists
   const [products, setProducts] = useState<any[]>([]);
@@ -34,41 +38,59 @@ export default function AdminPage() {
   const [captionLoading, setCaptionLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Client-side route guard: verify JWT role claim
+  useEffect(() => {
+    const checkAdminAuth = () => {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        router.push("/dashboard?tab=auth");
+        return;
+      }
+      try {
+        const parts = token.split(".");
+        if (parts.length !== 3) {
+          throw new Error("Invalid JWT token structure");
+        }
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload.role !== "admin") {
+          router.push("/dashboard?tab=auth");
+          return;
+        }
+        setIsAdminVerified(true);
+        loadAdminData();
+      } catch (err) {
+        console.error("Token parsing error during admin guard check:", err);
+        router.push("/dashboard?tab=auth");
+      }
+    };
+    checkAdminAuth();
+  }, []);
+
   const loadAdminData = async () => {
     setLoading(true);
+    setError("");
     try {
       const prods = await api.products.list();
       setProducts(prods || []);
       
       const ords = await api.orders.adminListAll();
       setOrders(ords || []);
-    } catch (e) {
-      console.warn("Failed to load admin data from backend, using mock data", e);
-      // Fallback Admin Mock Data
-      setProducts([
-        { id: "p1", title: "Everlasting Pink Tulip Bouquet", slug: "pink-tulip-bouquet", price: 599.00, stock: 12, colors: ["Pink", "Cream White"], tags: ["flower", "bouquet"] },
-        { id: "p2", title: "Chubby Crochet Octopus Plushie", slug: "octopus-plushie", price: 349.00, stock: 4, colors: ["Lilac", "Mint"], tags: ["plushie", "animal"] },
-        { id: "p3", title: "Artisanal Sunflower Crochet Stem", slug: "sunflower-stem", price: 249.00, stock: 0, colors: ["Yellow"], tags: ["sunflower", "stem"] }
-      ]);
-      setOrders([
-        { id: "o1", order_number: "KC812495", created_at: new Date().toISOString(), status: "packed", total: 659.00, shipping_address: { full_name: "Madhav Nair", phone: "9876543210" } }
-      ]);
+    } catch (e: any) {
+      console.error("Failed to load admin data from backend", e);
+      setError(e.message || "Failed to load admin dashboard data. Please verify your connection.");
     }
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadAdminData();
-  }, []);
-
   // Update order fulfillment status
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+    setError("");
     try {
       await api.orders.adminUpdateStatus(orderId, newStatus);
-      loadAdminData();
-    } catch (e) {
-      console.warn("Backend order status update failed, shifting state locally", e);
-      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: newStatus } : o));
+      await loadAdminData();
+    } catch (e: any) {
+      console.error("Backend order status update failed", e);
+      setError(e.message || "Failed to update order status.");
     }
   };
 
@@ -78,6 +100,7 @@ export default function AdminPage() {
       const file = e.target.files[0];
       setAiProductFile(file);
       setAiProductLoading(true);
+      setError("");
 
       try {
         const desc = await api.ai.describeProduct(file);
@@ -85,13 +108,9 @@ export default function AdminPage() {
         setNewDesc(desc.description);
         setNewTags(desc.tags);
         setNewSlug(desc.title.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, ""));
-      } catch (err) {
-        console.error("AI description generator failed, loading mock parameters", err);
-        // Fallback description parameters
-        setNewTitle("Chubby Crochet Turtle Buddy");
-        setNewDesc("An adorable, hand-knitted green turtle plushie made with premium milk cotton yarn. Soft, washable, and perfect as a key accessory or desk companion.");
-        setNewTags(["turtle", "plushie", "green", "desk buddy", "handmade"]);
-        setNewSlug("crochet-turtle-buddy");
+      } catch (err: any) {
+        console.error("AI description generator failed", err);
+        setError("AI product description generator failed. Please fill fields manually.");
       }
       setAiProductLoading(false);
     }
@@ -101,6 +120,8 @@ export default function AdminPage() {
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newSlug || newPrice <= 0) return;
+    setError("");
+    setLoading(true);
 
     const payload = {
       title: newTitle,
@@ -110,27 +131,27 @@ export default function AdminPage() {
       stock: newStock,
       tags: newTags,
       colors: newColors.length > 0 ? newColors : ["Default Pastel"],
-      images: ["https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=400"],
+      images: ["/images/hero.jpg"],
       variants: []
     };
 
     try {
       await api.products.create(payload);
-      loadAdminData();
+      await loadAdminData();
       setShowAddForm(false);
-    } catch (e) {
-      console.warn("Backend product creation failed, appending locally for sandbox mock run", e);
-      setProducts((prev) => [...prev, { ...payload, id: `p_mock_${Math.random()}` }]);
-      setShowAddForm(false);
+      
+      // Reset Form Fields
+      setNewTitle("");
+      setNewPrice(0);
+      setNewSlug("");
+      setNewDesc("");
+      setNewTags([]);
+      setNewColors([]);
+    } catch (e: any) {
+      console.error("Backend product creation failed", e);
+      setError(e.message || "Failed to create product in backend database.");
     }
-
-    // Reset Form Fields
-    setNewTitle("");
-    setNewPrice(0);
-    setNewSlug("");
-    setNewDesc("");
-    setNewTags([]);
-    setNewColors([]);
+    setLoading(false);
   };
 
   // AI Instagram Caption Generator
@@ -138,16 +159,14 @@ export default function AdminPage() {
     if (!selectedProductForCaption) return;
     setCaptionLoading(true);
     setGeneratedCaption(null);
+    setError("");
 
     try {
       const cap = await api.ai.instagramCaption(selectedProductForCaption, captionStyle);
       setGeneratedCaption(cap);
-    } catch (e) {
-      console.error("AI Caption failed, loading mock caption", e);
-      setGeneratedCaption({
-        caption: `Spring is in the air, and so are our hooks! 🌷✨ Our handcrafted Pink Tulip Bouquet is back in stock. Tied with a silk ribbon and made with love. Perfect for birthdays, dates, or just because. 💖 DM us or click our website link in bio to shop.`,
-        hashtags: ["#kee_crochet", "#handmadegifts", "#crochettulips", "#giftideas", "#craftsmanship"]
-      });
+    } catch (e: any) {
+      console.error("AI Caption failed", e);
+      setError("AI Instagram caption generator failed.");
     }
     setCaptionLoading(false);
   };
@@ -160,11 +179,29 @@ export default function AdminPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (!isAdminVerified) {
+    return (
+      <div className="flex-1 flex flex-col min-h-screen">
+        <Navbar />
+        <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-20 flex-1 flex flex-col items-center justify-center">
+          <RefreshCw className="w-10 h-10 text-primary animate-spin mb-4" />
+          <p className="text-foreground/70 font-semibold">Verifying administrative credentials...</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-screen">
       <Navbar />
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex-1">
+        {error && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold p-4 rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         <div className="flex justify-between items-center pb-6 border-b border-secondary/35 mb-8">
           <div>
             <h1 className="text-3xl font-extrabold text-foreground">Admin Console</h1>

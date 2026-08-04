@@ -1,7 +1,9 @@
 import logging
+import os
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import hash_password
 from app.models.user import User, UserRole, AuthProvider
 from app.models.product import Category, Product, ProductVariant
@@ -14,24 +16,35 @@ async def seed_data(db: AsyncSession) -> None:
     """Auto-seed default categories, products, and admin/customer accounts if empty."""
     logger.info("Checking if database seeding is required...")
 
+    # Prevent seeding default credentials in production
+    is_prod = settings.ENVIRONMENT == "production"
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@keecrochet.com")
+    admin_pass = os.getenv("ADMIN_PASSWORD", None if is_prod else "adminpassword123")
+    customer_email = os.getenv("CUSTOMER_EMAIL", "customer@keecrochet.com")
+    customer_pass = os.getenv("CUSTOMER_PASSWORD", None if is_prod else "customerpassword123")
+
+    if is_prod and (not admin_pass or not customer_pass):
+        logger.warning("Production environment detected and ADMIN_PASSWORD/CUSTOMER_PASSWORD are not set. Skipping automatic seeding.")
+        return
+
     # 1. Seed Users
     user_result = await db.execute(select(User))
     users = user_result.scalars().all()
     if not users:
         logger.info("No users found. Seeding default admin and customer accounts...")
         admin = User(
-            email="admin@keecrochet.com",
+            email=admin_email,
             full_name="Kee Admin",
-            hashed_password=hash_password("adminpassword123"),
+            hashed_password=hash_password(admin_pass),
             role=UserRole.admin,
             auth_provider=AuthProvider.email,
             is_active=True,
             is_verified=True,
         )
         customer = User(
-            email="customer@keecrochet.com",
+            email=customer_email,
             full_name="Madhav Nair",
-            hashed_password=hash_password("customerpassword123"),
+            hashed_password=hash_password(customer_pass),
             role=UserRole.customer,
             auth_provider=AuthProvider.email,
             is_active=True,

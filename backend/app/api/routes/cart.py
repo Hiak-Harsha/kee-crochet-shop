@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.cart import Cart, CartItem
-from app.models.product import Product
+from app.models.product import Product, ProductVariant
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemUpdate, CartOut
 
@@ -59,10 +59,29 @@ async def add_item(
         (i for i in cart.items if i.product_id == payload.product_id and i.variant_id == payload.variant_id),
         None,
     )
+    
+    new_qty = payload.quantity
     if existing:
-        existing.quantity += payload.quantity
+        new_qty += existing.quantity
+        
+    if payload.variant_id:
+        v_res = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == payload.variant_id, ProductVariant.product_id == product.id)
+        )
+        variant = v_res.scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Product variant not found")
+        if variant.stock < new_qty:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock. Available: {variant.stock}")
+    else:
+        if product.stock < new_qty:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock. Available: {product.stock}")
+
+    if existing:
+        existing.quantity = new_qty
     else:
         db.add(CartItem(cart_id=cart.id, **payload.model_dump()))
+        
     await db.commit()
     cart = await _get_or_create_cart(db, user)
     return _serialize(cart)
@@ -79,6 +98,23 @@ async def update_item(
     item = next((i for i in cart.items if i.id == item_id), None)
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cart item not found")
+        
+    if payload.quantity is not None:
+        if item.variant_id:
+            v_res = await db.execute(select(ProductVariant).where(ProductVariant.id == item.variant_id))
+            variant = v_res.scalar_one_or_none()
+            if not variant:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Variant not found")
+            if variant.stock < payload.quantity:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock. Available: {variant.stock}")
+        else:
+            product_res = await db.execute(select(Product).where(Product.id == item.product_id))
+            product = product_res.scalar_one_or_none()
+            if not product:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+            if product.stock < payload.quantity:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock. Available: {product.stock}")
+
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     await db.commit()

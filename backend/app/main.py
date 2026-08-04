@@ -1,3 +1,4 @@
+import os
 import logging
 from contextlib import asynccontextmanager
 
@@ -6,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.rate_limiter import RateLimitingMiddleware
 from app.api.routes import auth, products, cart, orders, ai
 
 # Setup logging
@@ -15,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Security checks
+    if settings.ENVIRONMENT == "production":
+        if settings.SECRET_KEY == "cozy_crochet_yarn_secret_key_1234567890_change_me_in_prod":
+            raise RuntimeError("CRITICAL SECURITY ERROR: Default SECRET_KEY must be changed in production environment!")
+
     # Startup Database Table Creation (ideal for mock dev/sandbox mode)
     logger.info("Initializing database tables...")
     async with engine.begin() as conn:
@@ -44,12 +51,24 @@ app = FastAPI(
 )
 
 # CORS configuration
+origins = ["http://localhost:3000"]
+if settings.ENVIRONMENT == "production":
+    prod_origin = os.getenv("FRONTEND_URL")
+    origins = [prod_origin] if prod_origin else ["https://keecrochet.com"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For dev purposes, restrict in production environment
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Rate Limiting Middleware for sensitive auth and AI endpoints
+app.add_middleware(
+    RateLimitingMiddleware,
+    limit_sec=60,
+    max_requests=15
 )
 
 # Register API Routers

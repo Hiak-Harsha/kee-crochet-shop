@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.models.cart import CartItem
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.user import User
+from app.models.product import Product, ProductVariant
 from app.schemas.order import OrderCreate, OrderOut, RazorpayVerify
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -28,8 +29,12 @@ def _razorpay_client() -> razorpay.Client:
     return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 
-def _new_order_number() -> str:
-    return f"KC{random.randint(100000, 999999)}"
+async def _new_order_number(db: AsyncSession) -> str:
+    while True:
+        num = f"KC{random.randint(100000, 999999)}"
+        result = await db.execute(select(Order).where(Order.order_number == num))
+        if not result.scalar_one_or_none():
+            return num
 
 
 @router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
@@ -45,8 +50,30 @@ async def create_order(
     discount = 0  # TODO: coupon engine
     total = subtotal + shipping_fee - discount
 
+    # 1. Enforce Stock Check & Row Locking
+    for item in cart.items:
+        if item.variant_id:
+            v_stmt = select(ProductVariant).where(ProductVariant.id == item.variant_id).with_for_update()
+            v_res = await db.execute(v_stmt)
+            variant = v_res.scalar_one_or_none()
+            if not variant:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f"Variant for item '{item.product.title}' not found")
+            if variant.stock < item.quantity:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock for '{item.product.title}' (variant). Available: {variant.stock}")
+            variant.stock -= item.quantity
+        else:
+            p_stmt = select(Product).where(Product.id == item.product_id).with_for_update()
+            p_res = await db.execute(p_stmt)
+            product = p_res.scalar_one_or_none()
+            if not product:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f"Product '{item.product.title}' not found")
+            if product.stock < item.quantity:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Insufficient stock for '{product.title}'. Available: {product.stock}")
+            product.stock -= item.quantity
+
+    order_num = await _new_order_number(db)
     order = Order(
-        order_number=_new_order_number(),
+        order_number=order_num,
         user_id=user.id,
         subtotal=subtotal,
         discount=discount,
