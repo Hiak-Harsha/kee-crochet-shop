@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  /* Cozy Warm Color Palette */
+  --background: #fbf9f6; /* Warm Cream White */
+  --foreground: #2d2a26; /* Deep Cozy Charcoal */
+  
+  --card: #ffffff;
+  --card-foreground: #2d2a26;
+  
+  --primary: #c97d7b; /* Soft Dusty Rose */
+  --primary-foreground: #ffffff;
+  
+  --secondary: #e8dccb; /* Warm Yarn Beige */
+  --secondary-foreground: #4a3e3d;
+  
+  --accent: #b4c7be; /* Cozy Sage Mint */
+  --accent-foreground: #2d4037;
+
+  --muted: #f3edd3; /* Pastel Butter Yellow */
+  --muted-foreground: #5a544c;
+  
+  --border: #e6dfd5;
+  --radius: 1rem;
+}
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-yarn-rose: #d68f8d;
+  --color-yarn-cream: #faf5ec;
+  --color-yarn-sage: #9cbcae;
+  --color-yarn-yellow: #fae4a7;
+  --color-yarn-cocoa: #6b554e;
+  
+  --border-radius-cozy: 1.25rem;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Custom Scrollbar for Cozy Aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--secondary);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Cozy Floating Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Glassmorphism card utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
