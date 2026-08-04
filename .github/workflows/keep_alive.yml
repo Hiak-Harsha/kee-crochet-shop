@@ -1,0 +1,14 @@
+name: Keep Alive Render Backend
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # Runs every 10 minutes to keep the Render free tier instance awake
+  workflow_dispatch:      # Allows running it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API
+        run: |
+          curl -sI https://kee-crochet-api.onrender.com/ | head -n 1
