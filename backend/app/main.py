@@ -51,7 +51,21 @@ app = FastAPI(
 )
 
 # CORS configuration
-origins = ["http://localhost:3000"]
+origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
+
+# Add Vercel deployment URLs
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
+
+# Allow all Vercel preview deployments for this project
+vercel_project = os.getenv("VERCEL_PROJECT_URL")
+if vercel_project:
+    origins.append(f"https://{vercel_project}")
+
 if settings.ENVIRONMENT == "production":
     prod_origin = os.getenv("FRONTEND_URL")
     origins = [prod_origin] if prod_origin else ["https://keecrochet.com"]
