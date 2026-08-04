@@ -1,6 +1,13 @@
 // API Client for Kee Crochet AI Platform backend
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://kee-crochet-api.onrender.com/api";
+let rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "https://kee-crochet-api.onrender.com/api";
+if (rawBaseUrl.endsWith("/")) {
+  rawBaseUrl = rawBaseUrl.slice(0, -1);
+}
+if (!rawBaseUrl.endsWith("/api")) {
+  rawBaseUrl = `${rawBaseUrl}/api`;
+}
+const BASE_URL = rawBaseUrl;
 
 async function getHeaders(multipart = false) {
   const headers: Record<string, string> = {};
