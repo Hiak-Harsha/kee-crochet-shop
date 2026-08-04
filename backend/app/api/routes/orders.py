@@ -196,7 +196,7 @@ async def admin_list_orders(db: AsyncSession = Depends(get_db), _admin=Depends(g
 async def admin_get_stats(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     # 1. Total sales (processing, packed, shipped, delivered)
     sales_stmt = select(func.sum(Order.total)).where(
-        Order.status.in_([OrderStatus.processing, OrderStatus.shipped, OrderStatus.delivered])
+        Order.status.in_([OrderStatus.processing.value, OrderStatus.shipped.value, OrderStatus.delivered.value])
     )
     sales_res = await db.execute(sales_stmt)
     total_sales = sales_res.scalar() or 0.0
@@ -209,7 +209,7 @@ async def admin_get_stats(db: AsyncSession = Depends(get_db), _admin=Depends(get
     # 3. Average order value
     if total_orders > 0:
         avg_stmt = select(func.avg(Order.total)).where(
-            Order.status.in_([OrderStatus.processing, OrderStatus.shipped, OrderStatus.delivered])
+            Order.status.in_([OrderStatus.processing.value, OrderStatus.shipped.value, OrderStatus.delivered.value])
         )
         avg_res = await db.execute(avg_stmt)
         average_order_value = avg_res.scalar() or 0.0
