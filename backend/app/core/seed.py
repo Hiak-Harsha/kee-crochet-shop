@@ -23,41 +23,40 @@ async def seed_data(db: AsyncSession) -> None:
     customer_email = os.getenv("CUSTOMER_EMAIL", "customer@keecrochet.com")
     customer_pass = os.getenv("CUSTOMER_PASSWORD", None if is_prod else "customerpassword123")
 
-    if is_prod and (not admin_pass or not customer_pass):
-        logger.warning("Production environment detected and ADMIN_PASSWORD/CUSTOMER_PASSWORD are not set. Skipping automatic seeding.")
-        return
-
     # 1. Seed Users
     user_result = await db.execute(select(User))
     users = user_result.scalars().all()
     if not users:
-        logger.info("No users found. Seeding default admin and customer accounts...")
-        admin = User(
-            email=admin_email,
-            full_name="Kee Admin",
-            hashed_password=hash_password(admin_pass),
-            role=UserRole.admin,
-            auth_provider=AuthProvider.email,
-            is_active=True,
-            is_verified=True,
-        )
-        customer = User(
-            email=customer_email,
-            full_name="Madhav Nair",
-            hashed_password=hash_password(customer_pass),
-            role=UserRole.customer,
-            auth_provider=AuthProvider.email,
-            is_active=True,
-            is_verified=True,
-        )
-        db.add(admin)
-        db.add(customer)
-        await db.flush()
+        if admin_pass and customer_pass:
+            logger.info("No users found. Seeding default admin and customer accounts...")
+            admin = User(
+                email=admin_email,
+                full_name="Kee Admin",
+                hashed_password=hash_password(admin_pass),
+                role=UserRole.admin,
+                auth_provider=AuthProvider.email,
+                is_active=True,
+                is_verified=True,
+            )
+            customer = User(
+                email=customer_email,
+                full_name="Madhav Nair",
+                hashed_password=hash_password(customer_pass),
+                role=UserRole.customer,
+                auth_provider=AuthProvider.email,
+                is_active=True,
+                is_verified=True,
+            )
+            db.add(admin)
+            db.add(customer)
+            await db.flush()
 
-        # Add carts for seeded users
-        db.add(Cart(user_id=admin.id))
-        db.add(Cart(user_id=customer.id))
-        logger.info("Admin & Customer users seeded successfully.")
+            # Add carts for seeded users
+            db.add(Cart(user_id=admin.id))
+            db.add(Cart(user_id=customer.id))
+            logger.info("Admin & Customer users seeded successfully.")
+        else:
+            logger.warning("No users found, but ADMIN_PASSWORD/CUSTOMER_PASSWORD are not set. Skipping user seeding.")
     else:
         logger.info("Users exist. Skipping user seeding.")
 

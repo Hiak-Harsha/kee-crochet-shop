@@ -31,12 +31,23 @@ export default function Navbar() {
       setCartCount(stored ? parseInt(stored, 10) : 0);
     };
 
+    const handleUnauthorized = () => {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("cart_count");
+      setIsLoggedIn(false);
+      setIsAdmin(false);
+      setCartCount(0);
+    };
+
     updateCartCount();
     window.addEventListener("storage", updateCartCount);
     window.addEventListener("cart-updated", updateCartCount);
+    window.addEventListener("unauthorized", handleUnauthorized);
     return () => {
       window.removeEventListener("storage", updateCartCount);
       window.removeEventListener("cart-updated", updateCartCount);
+      window.removeEventListener("unauthorized", handleUnauthorized);
     };
   }, []);
 

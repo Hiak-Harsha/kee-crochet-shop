@@ -15,11 +15,11 @@ class UserLogin(BaseModel):
 
 
 class OTPRequest(BaseModel):
-    identifier: str  # Email or phone number
+    identifier: EmailStr
 
 
 class OTPVerify(BaseModel):
-    identifier: str
+    identifier: EmailStr
     code: str
 
 
@@ -47,6 +47,21 @@ class UserOut(BaseModel):
     role: str
     auth_provider: str
     is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomRequestCreate(BaseModel):
+    description: str = Field(..., max_length=1000)
+    color_palette: str | None = Field(None, max_length=255)
+
+
+class CustomRequestOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    description: str
+    color_palette: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

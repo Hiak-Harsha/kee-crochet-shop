@@ -53,6 +53,13 @@ function DashboardContent() {
   };
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setIsLoggedIn(false);
+      setAuthTab("login");
+      setActiveTab("orders");
+    };
+    window.addEventListener("unauthorized", handleUnauthorized);
+
     const token = localStorage.getItem("access_token");
     if (token) {
       setIsLoggedIn(true);
@@ -63,6 +70,10 @@ function DashboardContent() {
         setAuthTab("login");
       }
     }
+
+    return () => {
+      window.removeEventListener("unauthorized", handleUnauthorized);
+    };
   }, [searchParams]);
 
   // Handle standard registration
@@ -145,13 +156,26 @@ function DashboardContent() {
   };
 
   // Submit custom design request
-  const handleCustomRequestSubmit = (e: React.FormEvent) => {
+  const handleCustomRequestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customDesc) return;
-    setCustomSuccess(true);
-    setCustomDesc("");
-    setCustomColors("");
-    setTimeout(() => setCustomSuccess(false), 4000);
+    setAuthLoading(true);
+    setError("");
+    try {
+      await api.products.createCustomRequest({
+        description: customDesc,
+        color_palette: customColors.trim() || null
+      });
+      setCustomSuccess(true);
+      setCustomDesc("");
+      setCustomColors("");
+      setTimeout(() => setCustomSuccess(false), 4000);
+    } catch (err: any) {
+      console.error("Failed to submit custom request:", err);
+      setError(err.message || "Failed to submit custom request.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   return (
@@ -231,14 +255,14 @@ function DashboardContent() {
                 {!otpRequested ? (
                   <form onSubmit={handleRequestOtp} className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-foreground/75">Email or Phone Number</label>
+                      <label className="text-xs font-bold text-foreground/75">Email Address</label>
                       <input
-                        type="text"
+                        type="email"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full p-3 rounded-xl border border-secondary bg-white focus:outline-none focus:ring-2 focus:ring-primary/45 text-sm"
-                        placeholder="e.g. name@example.com"
+                        placeholder="you@example.com"
                       />
                     </div>
                     <button
@@ -310,10 +334,11 @@ function DashboardContent() {
                   <input
                     type="password"
                     required
+                    minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full p-3 rounded-xl border border-secondary bg-white focus:outline-none focus:ring-2 focus:ring-primary/45 text-sm"
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                   />
                 </div>
                 <button

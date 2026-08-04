@@ -83,6 +83,7 @@ async def create_order(
         total=total,
         shipping_address=payload.shipping_address.model_dump(),
         coupon_code=payload.coupon_code,
+        delivery_slot=payload.delivery_slot,
     )
     db.add(order)
     await db.flush()

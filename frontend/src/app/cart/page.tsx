@@ -18,13 +18,27 @@ export default function CartPage() {
     setLoading(true);
     setError("");
     let itemsList = [];
+    
+    // Check if token exists first
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token) {
+      setError("Please sign in to view your shopping bag.");
+      setCart(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const data = await api.cart.get();
       setCart(data);
       itemsList = data?.items || [];
     } catch (e: any) {
       console.error("Failed to load backend cart", e);
-      setError("Failed to retrieve your shopping bag. Please sign in or check if the backend is online.");
+      if (e.message.includes("credentials") || e.message.includes("authenticate") || e.message.includes("Token") || e.message.includes("refresh")) {
+        setError("Please sign in to view your shopping bag.");
+      } else {
+        setError("Failed to retrieve your shopping bag. Please check if the backend is online.");
+      }
       setCart(null);
     }
     

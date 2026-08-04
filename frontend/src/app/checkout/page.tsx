@@ -45,6 +45,13 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
+    // Auth Guard
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      router.push("/dashboard?tab=auth");
+      return;
+    }
+
     // Load cart summary
     const loadCartPreview = async () => {
       try {
@@ -69,6 +76,21 @@ export default function CheckoutPage() {
       setError("Please fill in all required shipping fields");
       return;
     }
+
+    // Validate 10-digit Indian mobile number
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (!phoneRegex.test(phone.trim())) {
+      setError("Please enter a valid 10-digit Indian mobile number");
+      return;
+    }
+
+    // Validate 6-digit postal code (PIN code)
+    const pinRegex = /^\d{6}$/;
+    if (!pinRegex.test(postalCode.trim())) {
+      setError("Please enter a valid 6-digit PIN/postal code");
+      return;
+    }
+
     setError("");
     setLoading(true);
 
@@ -84,6 +106,7 @@ export default function CheckoutPage() {
         phone: phone,
       },
       coupon_code: couponCode.trim() || null,
+      delivery_slot: deliverySlot,
     };
 
     try {
@@ -100,8 +123,13 @@ export default function CheckoutPage() {
           throw new Error("Razorpay payment gateway SDK failed to load. Please verify your connection.");
         }
         
+        const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+        if (!rzpKey) {
+          throw new Error("Razorpay Key ID is not configured (NEXT_PUBLIC_RAZORPAY_KEY_ID is missing). Real payments cannot be processed.");
+        }
+        
         const options = {
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_51P2c114389025",
+          key: rzpKey,
           amount: Math.round(order.total * 100), // Amount in paise
           currency: "INR",
           name: "Kee Crochet",
@@ -229,8 +257,11 @@ export default function CheckoutPage() {
                 <input
                   type="tel"
                   required
+                  maxLength={10}
+                  pattern="[6-9][0-9]{9}"
+                  inputMode="numeric"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
                   className="w-full p-3 rounded-xl border border-secondary bg-white focus:outline-none focus:ring-2 focus:ring-primary/45 text-sm"
                   placeholder="e.g. 9876543210"
                 />
@@ -241,8 +272,11 @@ export default function CheckoutPage() {
                 <input
                   type="text"
                   required
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  inputMode="numeric"
                   value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
+                  onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ""))}
                   className="w-full p-3 rounded-xl border border-secondary bg-white focus:outline-none focus:ring-2 focus:ring-primary/45 text-sm"
                   placeholder="e.g. 411001"
                 />

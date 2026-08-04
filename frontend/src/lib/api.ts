@@ -26,33 +26,91 @@ async function getHeaders(multipart = false) {
 
 async function request(endpoint: string, options: RequestInit = {}, multipart = false) {
   const headers = await getHeaders(multipart);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
   const config = {
     ...options,
+    signal: controller.signal,
     headers: {
       ...headers,
       ...(options.headers || {}),
     },
   };
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, config);
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorMessage = "Request failed";
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.detail || errorMessage;
-    } catch {
-      errorMessage = errorText || errorMessage;
+  try {
+    let response = await fetch(`${BASE_URL}${endpoint}`, config);
+    
+    // Automatically attempt token refresh on 401 if a refresh token is available and we aren't calling auth routes
+    if (response.status === 401 && !endpoint.includes("/auth/")) {
+      const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+      if (refreshToken) {
+        try {
+          const refreshResp = await fetch(`${BASE_URL}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+          if (refreshResp.ok) {
+            const tokens = await refreshResp.json();
+            localStorage.setItem("access_token", tokens.access_token);
+            localStorage.setItem("refresh_token", tokens.refresh_token);
+            
+            // Retry the original request
+            const newHeaders = await getHeaders(multipart);
+            const retryConfig = {
+              ...config,
+              headers: {
+                ...newHeaders,
+                ...(options.headers || {}),
+              },
+            };
+            response = await fetch(`${BASE_URL}${endpoint}`, retryConfig);
+          } else {
+            // Refresh token expired or rejected: log out
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+            window.dispatchEvent(new Event("unauthorized"));
+          }
+        } catch (refreshErr) {
+          console.error("Auto-refresh token failed:", refreshErr);
+        }
+      } else {
+        window.dispatchEvent(new Event("unauthorized"));
+      }
     }
-    throw new Error(errorMessage);
-  }
 
-  if (response.status === 204) {
-    return null;
-  }
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = "Request failed";
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (Array.isArray(errorJson.detail)) {
+          errorMessage = errorJson.detail.map((d: any) => d.msg).join(", ");
+        } else {
+          errorMessage = errorJson.detail || errorMessage;
+        }
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
 
-  return response.json();
+    if (response.status === 204) {
+      return null;
+    }
+
+    return response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      throw new Error("The database server appears to be starting up from cold standby. Please retry in a few seconds.");
+    }
+    throw err;
+  }
 }
 
 export const api = {
@@ -85,6 +143,8 @@ export const api = {
     // Categories
     listCategories: () => request("/categories"),
     createCategory: (payload: any) => request("/categories", { method: "POST", body: JSON.stringify(payload) }),
+    createCustomRequest: (payload: { description: string; color_palette: string | null }) => 
+      request("/products/custom-requests", { method: "POST", body: JSON.stringify(payload) }),
   },
 
   // Cart

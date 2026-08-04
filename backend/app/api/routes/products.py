@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_admin
+from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.product import Category, Product, ProductVariant
 from app.schemas.product import (
@@ -15,6 +15,7 @@ from app.schemas.product import (
     ProductOut,
     ProductUpdate,
 )
+from app.schemas.user import CustomRequestCreate, CustomRequestOut
 
 router = APIRouter(tags=["products"])
 
@@ -65,7 +66,7 @@ async def list_products(
 
 @router.get("/products/{slug}", response_model=ProductOut)
 async def get_product(slug: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(Product).options(selectinload(Product.variants)).where(Product.slug == slug)
+    stmt = select(Product).options(selectinload(Product.variants)).where(Product.slug == slug, Product.is_active == True)
     result = await db.execute(stmt)
     product = result.scalar_one_or_none()
     if not product:
@@ -118,3 +119,31 @@ async def delete_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
     product.is_active = False  # soft delete
     await db.commit()
+
+
+@router.post("/products/custom-requests", response_model=CustomRequestOut, status_code=status.HTTP_201_CREATED)
+async def create_custom_request(
+    payload: CustomRequestCreate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    from app.models.user import CustomRequest
+    req = CustomRequest(
+        user_id=user.id,
+        description=payload.description,
+        color_palette=payload.color_palette
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+
+@router.get("/products/custom-requests/admin", response_model=list[CustomRequestOut])
+async def list_custom_requests_admin(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin)
+):
+    from app.models.user import CustomRequest
+    result = await db.execute(select(CustomRequest))
+    return result.scalars().all()

@@ -33,6 +33,7 @@ class Order(Base):
     razorpay_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     razorpay_payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     coupon_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    delivery_slot: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

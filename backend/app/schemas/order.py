@@ -17,6 +17,7 @@ class ShippingAddress(BaseModel):
 class OrderCreate(BaseModel):
     shipping_address: ShippingAddress
     coupon_code: str | None = None
+    delivery_slot: str | None = None
 
 
 class RazorpayVerify(BaseModel):
@@ -50,6 +51,7 @@ class OrderOut(BaseModel):
     razorpay_order_id: str | None = None
     razorpay_payment_id: str | None = None
     coupon_code: str | None = None
+    delivery_slot: str | None = None
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemOut] = []
