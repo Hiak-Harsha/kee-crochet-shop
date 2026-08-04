@@ -16,82 +16,20 @@ export default function ProductsPage() {
   const [aiSearchQuery, setAiSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [priceRange, setPriceRange] = useState(1500);
+  const [error, setError] = useState("");
 
   // Load products and categories
   const loadData = async () => {
     setLoading(true);
+    setError("");
     try {
       const cats = await api.products.listCategories();
       setCategories(cats || []);
-    } catch (e) {
-      console.error("Failed to load categories, using fallback", e);
-      setCategories([
-        { id: "1", name: "Plushies", slug: "plushies" },
-        { id: "2", name: "Keychains", slug: "keychains" },
-        { id: "3", name: "Bouquets", slug: "bouquets" },
-      ]);
-    }
-
-    try {
       const prods = await api.products.list();
       setProducts(prods || []);
-    } catch (e) {
-      console.error("Failed to load products, using fallback", e);
-      // Premium Mock Products
-      setProducts([
-        {
-          id: "p1",
-          title: "Everlasting Pink Tulip Bouquet",
-          slug: "pink-tulip-bouquet",
-          price: 599.00,
-          images: ["/images/category_bouquets.jpg"],
-          tags: ["flower", "bouquet", "gift", "romantic"],
-          colors: ["Pink", "Sage Green"],
-          stock: 12,
-          is_active: true,
-          is_featured: true,
-          variants: [{ id: "v1", name: "Size", value: "3 Stems", price_delta: 0 }]
-        },
-        {
-          id: "p2",
-          title: "Chubby Crochet Octopus Plushie",
-          slug: "octopus-plushie",
-          price: 349.00,
-          images: ["/images/category_plushies.jpg"],
-          tags: ["plushie", "animal", "octopus", "cute"],
-          colors: ["Lilac", "Mint", "Peach"],
-          stock: 8,
-          is_active: true,
-          is_featured: true,
-          variants: []
-        },
-        {
-          id: "p3",
-          title: "Artisanal Sunflower Crochet Stem",
-          slug: "sunflower-stem",
-          price: 249.00,
-          images: ["/images/insta_2.jpg"],
-          tags: ["sunflower", "stem", "accessory"],
-          colors: ["Yellow", "Brown"],
-          stock: 15,
-          is_active: true,
-          is_featured: false,
-          variants: []
-        },
-        {
-          id: "p4",
-          title: "Mini Avocado Heart Keychain",
-          slug: "avocado-keychain",
-          price: 189.00,
-          images: ["/images/category_keychains.jpg"],
-          tags: ["keychain", "accessory", "avocado", "couple"],
-          colors: ["Green"],
-          stock: 25,
-          is_active: true,
-          is_featured: false,
-          variants: []
-        }
-      ]);
+    } catch (e: any) {
+      console.error("Failed to load catalog data from backend", e);
+      setError("Unable to load the products. Please verify the backend API server is online.");
     }
     setLoading(false);
   };
@@ -103,8 +41,8 @@ export default function ProductsPage() {
   // Standard search / filters
   const filteredProducts = products.filter((p) => {
     // Category slug filter
-    if (selectedCategory && p.category_id) {
-      // Find category slug
+    if (selectedCategory) {
+      if (!p.category_id) return false;
       const cat = categories.find((c) => c.slug === selectedCategory);
       if (cat && p.category_id !== cat.id) return false;
     }
@@ -267,7 +205,15 @@ export default function ProductsPage() {
               </div>
             )}
 
-            {loading ? (
+            {error ? (
+              <div className="text-center py-20 border border-dashed border-rose-300 rounded-cozy bg-rose-50/50 space-y-4">
+                <p className="text-lg font-bold text-rose-800">Connection Error</p>
+                <p className="text-sm text-rose-700 max-w-sm mx-auto">{error}</p>
+                <button onClick={loadData} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full font-bold text-sm shadow transition flex items-center gap-1.5 mx-auto">
+                  <RefreshCw className="w-4 h-4" /> Retry Loading Catalog
+                </button>
+              </div>
+            ) : loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-4">
                 <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-sm font-medium text-foreground/60">Searching catalog...</p>

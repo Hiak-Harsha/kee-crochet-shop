@@ -12,58 +12,25 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
 
   // Load cart data
+  const [error, setError] = useState("");
+
   const loadCart = async () => {
     setLoading(true);
+    setError("");
     let itemsList = [];
     try {
       const data = await api.cart.get();
       setCart(data);
       itemsList = data?.items || [];
-    } catch (e) {
-      console.warn("Failed to load backend cart, loading mock data", e);
-      // Fallback mock cart data representing typical user selection
-      const mockCart = {
-        id: "c1",
-        items: [
-          {
-            id: "ci1",
-            product_id: "p1",
-            variant_id: "v1",
-            quantity: 1,
-            gift_wrap: true,
-            note: "Happy Birthday Sister!",
-            product: {
-              title: "Everlasting Pink Tulip Bouquet",
-              slug: "pink-tulip-bouquet",
-              price: 599.00,
-              images: ["/images/category_bouquets.jpg"],
-            }
-          },
-          {
-            id: "ci2",
-            product_id: "p2",
-            variant_id: null,
-            quantity: 2,
-            gift_wrap: false,
-            note: null,
-            product: {
-              title: "Chubby Crochet Octopus Plushie",
-              slug: "octopus-plushie",
-              price: 349.00,
-              images: ["/images/category_plushies.jpg"],
-            }
-          }
-        ],
-        subtotal: 1297.00
-      };
-      setCart(mockCart);
-      itemsList = mockCart.items;
+    } catch (e: any) {
+      console.error("Failed to load backend cart", e);
+      setError("Failed to retrieve your shopping bag. Please sign in or check if the backend is online.");
+      setCart(null);
     }
     
     // Update local cart count
     const totalQty = itemsList.reduce((acc: number, item: any) => acc + item.quantity, 0);
     localStorage.setItem("cart_count", String(totalQty));
-    window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new Event("cart-updated"));
     
     setLoading(false);
@@ -76,43 +43,25 @@ export default function CartPage() {
   const handleUpdateQuantity = async (itemId: string, currentQty: number, delta: number) => {
     const newQty = currentQty + delta;
     if (newQty < 1) return;
+    setError("");
 
     try {
       await api.cart.updateItem(itemId, { quantity: newQty });
       loadCart();
-    } catch (e) {
-      console.warn("Backend update failed, modifying state locally", e);
-      // Mock local update
-      if (cart) {
-        const updatedItems = cart.items.map((item: any) => {
-          if (item.id === itemId) {
-            return { ...item, quantity: newQty };
-          }
-          return item;
-        });
-        const sub = updatedItems.reduce((acc: number, item: any) => acc + (item.product.price * item.quantity), 0);
-        setCart({ ...cart, items: updatedItems, subtotal: sub });
-        localStorage.setItem("cart_count", String(updatedItems.reduce((acc: number, item: any) => acc + item.quantity, 0)));
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("cart-updated"));
-      }
+    } catch (e: any) {
+      console.error("Backend update failed", e);
+      setError(e.message || "Failed to update item quantity in shopping bag.");
     }
   };
 
   const handleRemoveItem = async (itemId: string) => {
+    setError("");
     try {
       await api.cart.removeItem(itemId);
       loadCart();
-    } catch (e) {
-      console.warn("Backend delete failed, modifying state locally", e);
-      if (cart) {
-        const updatedItems = cart.items.filter((item: any) => item.id !== itemId);
-        const sub = updatedItems.reduce((acc: number, item: any) => acc + (item.product.price * item.quantity), 0);
-        setCart({ ...cart, items: updatedItems, subtotal: sub });
-        localStorage.setItem("cart_count", String(updatedItems.reduce((acc: number, item: any) => acc + item.quantity, 0)));
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("cart-updated"));
-      }
+    } catch (e: any) {
+      console.error("Backend delete failed", e);
+      setError(e.message || "Failed to remove item from shopping bag.");
     }
   };
 
@@ -140,6 +89,12 @@ export default function CartPage() {
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex-1">
         <h1 className="text-3xl font-extrabold text-foreground mb-8">Shopping Bag</h1>
+
+        {error && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold p-4 rounded-xl flex items-center gap-2">
+            <span>⚠️</span> {error}
+          </div>
+        )}
 
         {items.length === 0 ? (
           <div className="text-center py-20 bg-white border border-secondary/50 rounded-cozy space-y-4">

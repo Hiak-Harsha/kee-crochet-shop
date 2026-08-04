@@ -6,7 +6,7 @@ import uuid
 
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,6 +49,8 @@ async def create_order(
     shipping_fee = 0 if subtotal >= 999 else 60
     discount = 0  # TODO: coupon engine
     total = subtotal + shipping_fee - discount
+    if total <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order total must be greater than zero")
 
     # 1. Enforce Stock Check & Row Locking
     for item in cart.items:
@@ -130,8 +132,9 @@ async def verify_payment(
     if not order:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
 
-    # If it is a mock transaction in sandbox mode, bypass actual signature check
-    if payload.razorpay_signature == "mock_signature" or (order.razorpay_order_id and order.razorpay_order_id.startswith("rzp_mock")):
+    # If it is a mock transaction in sandbox mode, bypass actual signature check ONLY in non-production
+    is_mock = payload.razorpay_signature == "mock_signature" or (order.razorpay_order_id and order.razorpay_order_id.startswith("rzp_mock"))
+    if is_mock and settings.ENVIRONMENT != "production":
         order.razorpay_payment_id = payload.razorpay_payment_id
         order.status = OrderStatus.processing
         await db.commit()
@@ -185,6 +188,37 @@ async def admin_list_orders(db: AsyncSession = Depends(get_db), _admin=Depends(g
     stmt = select(Order).options(selectinload(Order.items)).order_by(Order.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@router.get("/admin/stats")
+async def admin_get_stats(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
+    # 1. Total sales (processing, packed, shipped, delivered)
+    sales_stmt = select(func.sum(Order.total)).where(
+        Order.status.in_([OrderStatus.processing, OrderStatus.shipped, OrderStatus.delivered])
+    )
+    sales_res = await db.execute(sales_stmt)
+    total_sales = sales_res.scalar() or 0.0
+
+    # 2. Total orders
+    orders_stmt = select(func.count(Order.id))
+    orders_res = await db.execute(orders_stmt)
+    total_orders = orders_res.scalar() or 0
+
+    # 3. Average order value
+    if total_orders > 0:
+        avg_stmt = select(func.avg(Order.total)).where(
+            Order.status.in_([OrderStatus.processing, OrderStatus.shipped, OrderStatus.delivered])
+        )
+        avg_res = await db.execute(avg_stmt)
+        average_order_value = avg_res.scalar() or 0.0
+    else:
+        average_order_value = 0.0
+
+    return {
+        "total_sales": float(total_sales),
+        "total_orders": int(total_orders),
+        "average_order_value": float(average_order_value),
+    }
 
 
 @router.patch("/admin/{order_id}/status", response_model=OrderOut)

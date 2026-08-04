@@ -36,27 +36,18 @@ function DashboardContent() {
   const [customColors, setCustomColors] = useState("");
   const [customSuccess, setCustomSuccess] = useState(false);
 
+  const [error, setError] = useState("");
+
   const loadOrders = async () => {
     setLoadingOrders(true);
+    setError("");
     try {
       const data = await api.orders.list();
       setOrders(data || []);
-    } catch (e) {
-      console.warn("Failed to load backend orders, using mock order history", e);
-      // Fallback mock customer orders
-      setOrders([
-        {
-          id: "o1",
-          order_number: "KC812495",
-          created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          status: "packed",
-          total: 659.00,
-          shipping_address: { full_name: "Madhav Nair", city: "Pune" },
-          items: [
-            { product_title: "Everlasting Pink Tulip Bouquet", quantity: 1, unit_price: 599.00 }
-          ]
-        }
-      ]);
+    } catch (e: any) {
+      console.error("Failed to load backend orders", e);
+      setError("Failed to retrieve your order history. Please check your connection.");
+      setOrders([]);
     }
     setLoadingOrders(false);
   };
@@ -337,7 +328,13 @@ function DashboardContent() {
           </div>
         ) : (
           /* Authenticated Customer Dashboard */
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="space-y-6">
+            {error && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold p-4 rounded-xl flex items-center gap-2">
+                <span>⚠️</span> {error}
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Sidebar Navigation */}
             <div className="lg:col-span-1 bg-white p-6 rounded-cozy border border-secondary/50 h-fit space-y-4 shadow-sm">
               <div className="flex items-center space-x-3 pb-4 border-b border-secondary/30">
@@ -487,7 +484,8 @@ function DashboardContent() {
               )}
             </div>
           </div>
-        )}
+        </div>
+      )}
       </main>
     </div>
   );

@@ -16,6 +16,7 @@ export default function AdminPage() {
   // Admin Data lists
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({ total_sales: 0, total_orders: 0, average_order_value: 0 });
 
   // Product Create Form States
   const [newTitle, setNewTitle] = useState("");
@@ -75,6 +76,9 @@ export default function AdminPage() {
       
       const ords = await api.orders.adminListAll();
       setOrders(ords || []);
+
+      const st = await api.orders.adminGetStats();
+      setStats(st || { total_sales: 0, total_orders: 0, average_order_value: 0 });
     } catch (e: any) {
       console.error("Failed to load admin data from backend", e);
       setError(e.message || "Failed to load admin dashboard data. Please verify your connection.");
@@ -247,14 +251,14 @@ export default function AdminPage() {
               <div className="bg-white p-6 rounded-cozy border border-secondary/50 shadow-sm flex items-center justify-between">
                 <div>
                   <p className="text-xs text-foreground/60 font-bold uppercase tracking-wider">Total Sales (INR)</p>
-                  <p className="text-2xl font-black text-foreground mt-1">₹34,890.00</p>
+                  <p className="text-2xl font-black text-foreground mt-1">₹{stats.total_sales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <BarChart className="w-8 h-8 text-primary/45" />
               </div>
               <div className="bg-white p-6 rounded-cozy border border-secondary/50 shadow-sm flex items-center justify-between">
                 <div>
                   <p className="text-xs text-foreground/60 font-bold uppercase tracking-wider">Total Orders</p>
-                  <p className="text-2xl font-black text-foreground mt-1">{orders.length + 42}</p>
+                  <p className="text-2xl font-black text-foreground mt-1">{stats.total_orders}</p>
                 </div>
                 <ShoppingCart className="w-8 h-8 text-primary/45" />
               </div>
@@ -270,7 +274,7 @@ export default function AdminPage() {
               <div className="bg-white p-6 rounded-cozy border border-secondary/50 shadow-sm flex items-center justify-between">
                 <div>
                   <p className="text-xs text-foreground/60 font-bold uppercase tracking-wider">Average Order</p>
-                  <p className="text-2xl font-black text-foreground mt-1">₹620.00</p>
+                  <p className="text-2xl font-black text-foreground mt-1">₹{stats.average_order_value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <Eye className="w-8 h-8 text-primary/45" />
               </div>

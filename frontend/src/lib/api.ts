@@ -101,6 +101,7 @@ export const api = {
     
     // Admin orders
     adminListAll: () => request("/orders/admin/all"),
+    adminGetStats: () => request("/orders/admin/stats"),
     adminUpdateStatus: (id: string, status: string) => 
       request(`/orders/admin/${id}/status?new_status=${status}`, { method: "PATCH" }),
   },

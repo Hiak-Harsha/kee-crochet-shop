@@ -26,6 +26,7 @@ export default function ShopHelperPage() {
   
   // Store Catalog reference for mapping recommendation IDs
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     // Scroll chat to bottom
@@ -36,16 +37,12 @@ export default function ShopHelperPage() {
     // Pre-fetch product list for matching recommendations
     const fetchCatalog = async () => {
       try {
+        setError("");
         const prods = await api.products.list();
         setCatalog(prods || []);
-      } catch (e) {
-        console.error("Failed to load catalog, falling back to mock mapping", e);
-        setCatalog([
-          { id: "p1", title: "Everlasting Pink Tulip Bouquet", slug: "pink-tulip-bouquet", price: 599.00, images: ["https://images.unsplash.com/photo-1599599810769-bcde5a160d32?auto=format&fit=crop&q=80&w=400"], colors: ["Pink"] },
-          { id: "p2", title: "Chubby Crochet Octopus Plushie", slug: "octopus-plushie", price: 349.00, images: ["https://images.unsplash.com/photo-1559251606-c623743a6d76?auto=format&fit=crop&q=80&w=400"], colors: ["Lilac", "Mint"] },
-          { id: "p3", title: "Artisanal Sunflower Crochet Stem", slug: "sunflower-stem", price: 249.00, images: ["https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&q=80&w=400"], colors: ["Yellow"] },
-          { id: "p4", title: "Mini Avocado Heart Keychain", slug: "avocado-keychain", price: 189.00, images: ["https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&q=80&w=400"], colors: ["Green"] }
-        ]);
+      } catch (e: any) {
+        console.error("Failed to load catalog:", e);
+        setError("Failed to fetch product catalog from the database. Please verify the backend is online.");
       }
     };
     fetchCatalog();
@@ -60,6 +57,7 @@ export default function ShopHelperPage() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setChatInput("");
     setChatLoading(true);
+    setError("");
 
     try {
       const history = [...messages, { role: "user", content: userMessage }];
@@ -77,15 +75,12 @@ export default function ShopHelperPage() {
       } else {
         setRecommendedProducts([]);
       }
-    } catch (err) {
-      console.error("AI Chat failed, fallback mock reply", err);
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "I'd highly recommend checking out our Everlasting Pink Tulip Bouquet! It is handmade with premium cotton yarn, fits a ₹500-₹700 budget perfectly, and makes a beautiful long-lasting gift." }
-        ]);
-        setRecommendedProducts([catalog[0]]);
-      }, 1000);
+    } catch (err: any) {
+      console.error("AI Chat failed:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "I'm sorry, I'm having trouble connecting to the AI helper right now. Please verify the backend is online and try again." }
+      ]);
     }
     setChatLoading(false);
   };
@@ -108,19 +103,14 @@ export default function ShopHelperPage() {
     if (!selectedFile) return;
     setColorMatchLoading(true);
     setColorMatchResult(null);
+    setError("");
 
     try {
       const result = await api.ai.colorMatch(selectedFile);
       setColorMatchResult(result);
-    } catch (e) {
-      console.error("Color match failed, displaying fallback analysis", e);
-      setTimeout(() => {
-        setColorMatchResult({
-          recommended_colors: ["Warm Beige", "Sage Green", "Soft Yellow"],
-          reasoning: "Your space features warm neutral wood textures and soft daylight. Adding earthy accents like Sage Green or warm sand Beige plushies would tie the shelves together nicely.",
-          matching_product_ids: ["p1", "p3"]
-        });
-      }, 1500);
+    } catch (e: any) {
+      console.error("Color match failed:", e);
+      setError("AI Room color matcher failed. Please verify the backend is online and try again.");
     }
     setColorMatchLoading(false);
   };
@@ -134,6 +124,11 @@ export default function ShopHelperPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex-1 flex flex-col">
+        {error && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold p-4 rounded-xl flex items-center gap-2">
+            <span>⚠️</span> {error}
+          </div>
+        )}
         {/* Toggle tabs */}
         <div className="flex justify-center mb-8">
           <div className="bg-secondary/40 p-1.5 rounded-full flex space-x-1 border border-secondary/50">

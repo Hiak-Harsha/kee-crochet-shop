@@ -1,18 +1,18 @@
 import uuid
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.product import ProductOut
 
 
 class CartItemAdd(BaseModel):
     product_id: uuid.UUID
     variant_id: uuid.UUID | None = None
-    quantity: int = 1
+    quantity: int = Field(default=1, gt=0)
     gift_wrap: bool = False
     note: str | None = None
 
 
 class CartItemUpdate(BaseModel):
-    quantity: int | None = None
+    quantity: int | None = Field(default=None, gt=0)
     gift_wrap: bool | None = None
     note: str | None = None
 

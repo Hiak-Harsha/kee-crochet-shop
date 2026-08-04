@@ -42,10 +42,12 @@ export default function Home() {
   const [categories, setCategories] = useState<any[]>([]);
   const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
+      setError("");
       try {
         const cats = await api.products.listCategories();
         if (cats && cats.length > 0) {
@@ -73,8 +75,9 @@ export default function Home() {
       try {
         const prods = await api.products.list({ featured: true });
         setFeaturedProducts(prods || []);
-      } catch (err) {
+      } catch (err: any) {
         console.warn("Failed to load featured products from backend:", err);
+        setError("Failed to fetch featured products from database. Running in offline fallback mode.");
       }
       setLoading(false);
     }
@@ -84,6 +87,12 @@ export default function Home() {
   return (
     <div className="flex-1 flex flex-col min-h-screen">
       <Navbar />
+
+      {error && (
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 text-sm font-bold p-4 flex items-center justify-center gap-2">
+          <span>⚠️</span> {error}
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-20 px-6 sm:px-12 lg:px-24 bg-gradient-to-b from-yarn-cream to-background">

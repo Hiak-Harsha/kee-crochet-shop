@@ -29,9 +29,12 @@ export default function ProductDetailPage() {
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
 
+  const [error, setError] = useState("");
+
   useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
+      setError("");
       try {
         const prod = await api.products.get(slug);
         setProduct(prod);
@@ -44,42 +47,9 @@ export default function ProductDetailPage() {
         if (prod.variants && prod.variants.length > 0) {
           setSelectedVariant(prod.variants[0]);
         }
-      } catch (e) {
-        console.error("Failed to fetch product details, using fallback based on slug", e);
-        // Fallback Premium product details
-        const mockProduct = {
-          id: "p1",
-          title: slug === "octopus-plushie" ? "Chubby Crochet Octopus Plushie" : "Everlasting Pink Tulip Bouquet",
-          slug: slug,
-          price: slug === "octopus-plushie" ? 349.00 : 599.00,
-          compare_at_price: slug === "octopus-plushie" ? 449.00 : 799.00,
-          description: slug === "octopus-plushie" 
-            ? "Brighten up your day with this super squishy, hand-knitted octopus companion. Made using hypoallergenic milk cotton yarn and filled with premium grade polyester fiberfill. Ideal for kids, desks, or as a pocket buddy." 
-            : "A gorgeous handmade bouquet featuring three stems of crochet pink tulips. Handcrafted with precision using high-grade milk cotton yarn, wrapped in warm paper, and tied with a silk ribbon. A thoughtful gift that never withers.",
-          images: slug === "octopus-plushie" 
-            ? [
-                "/images/category_plushies.jpg",
-                "/images/insta_4.jpg"
-              ] 
-            : [
-                "/images/category_bouquets.jpg",
-                "/images/insta_2.jpg"
-              ],
-          tags: ["handmade", "crochet", "tulip", "gift", "bouquet"],
-          colors: slug === "octopus-plushie" ? ["Lilac", "Mint", "Peach"] : ["Dusty Rose", "Pastel Pink", "Cream White"],
-          stock: 8,
-          is_active: true,
-          variants: slug === "octopus-plushie" ? [] : [
-            { id: "v1", name: "Stems", value: "3 Tulips", price_delta: 0 },
-            { id: "v2", name: "Stems", value: "5 Tulips (Large)", price_delta: 200 }
-          ]
-        };
-        setProduct(mockProduct);
-        setSelectedImage(mockProduct.images[0]);
-        setSelectedColor(mockProduct.colors[0]);
-        if (mockProduct.variants.length > 0) {
-          setSelectedVariant(mockProduct.variants[0]);
-        }
+      } catch (e: any) {
+        console.error("Failed to fetch product details", e);
+        setError("Failed to retrieve product details. Please ensure the backend is running and the slug is correct.");
       }
       setLoading(false);
     };
@@ -91,6 +61,7 @@ export default function ProductDetailPage() {
     if (!product) return;
     setAddingToCart(true);
     setCartSuccess(false);
+    setError("");
     
     const payload = {
       product_id: product.id,
@@ -102,22 +73,20 @@ export default function ProductDetailPage() {
 
     try {
       await api.cart.addItem(payload);
-    } catch (e) {
-      console.warn("Failed to add to backend cart, updating localStorage for mock run", e);
+      const count = parseInt(localStorage.getItem("cart_count") || "0", 10);
+      localStorage.setItem("cart_count", String(count + quantity));
+      window.dispatchEvent(new Event("cart-updated"));
+      setCartSuccess(true);
+      
+      setTimeout(() => {
+        setCartSuccess(false);
+      }, 3000);
+    } catch (e: any) {
+      console.error("Failed to add to backend cart", e);
+      setError(e.message || "Failed to add item to shopping bag. Make sure you are signed in.");
+    } finally {
+      setAddingToCart(false);
     }
-    
-    // Always succeed locally for robustness
-    const count = parseInt(localStorage.getItem("cart_count") || "0", 10);
-    localStorage.setItem("cart_count", String(count + quantity));
-    window.dispatchEvent(new Event("storage"));
-    window.dispatchEvent(new Event("cart-updated"));
-    
-    setCartSuccess(true);
-    setAddingToCart(false);
-    
-    setTimeout(() => {
-      setCartSuccess(false);
-    }, 3000);
   };
 
   const handleSummarizeReviews = async () => {
@@ -150,6 +119,21 @@ export default function ProductDetailPage() {
     );
   }
 
+  if (error && !product) {
+    return (
+      <div className="flex-1 flex flex-col min-h-screen">
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+          <p className="text-lg font-bold text-rose-600">Connection Error</p>
+          <p className="text-sm text-foreground/75 max-w-sm text-center">{error}</p>
+          <button onClick={() => router.push("/products")} className="bg-primary text-white px-6 py-2 rounded-full font-bold">
+            Back to Catalog
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!product) {
     return (
       <div className="flex-1 flex flex-col min-h-screen">
@@ -171,6 +155,11 @@ export default function ProductDetailPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex-1">
+        {error && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold p-4 rounded-xl flex items-center gap-2">
+            <span>⚠️</span> {error}
+          </div>
+        )}
         {/* Back navigation */}
         <button onClick={() => router.back()} className="inline-flex items-center text-foreground/60 hover:text-primary mb-8 font-bold text-sm">
           <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Catalog
