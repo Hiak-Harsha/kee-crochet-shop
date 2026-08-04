@@ -34,7 +34,16 @@ export default function CartPage() {
       itemsList = data?.items || [];
     } catch (e: any) {
       console.error("Failed to load backend cart", e);
-      if (e.message.includes("credentials") || e.message.includes("authenticate") || e.message.includes("Token") || e.message.includes("refresh")) {
+      const msg = (e.message || "").toLowerCase();
+      if (
+        msg.includes("credential") ||
+        msg.includes("authenticate") ||
+        msg.includes("auth") ||
+        msg.includes("token") ||
+        msg.includes("unauthorized") ||
+        msg.includes("sign in") ||
+        msg.includes("login")
+      ) {
         setError("Please sign in to view your shopping bag.");
       } else {
         setError("Failed to retrieve your shopping bag. Please check if the backend is online.");
