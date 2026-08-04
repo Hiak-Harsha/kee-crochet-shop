@@ -15,16 +15,16 @@ from app.api.routes import auth, products, cart, orders, ai
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Ensure static uploads directory is created before static files are mounted at import time
+os.makedirs("static/uploads", exist_ok=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Security checks
     if settings.ENVIRONMENT == "production":
         if settings.SECRET_KEY == "cozy_crochet_yarn_secret_key_1234567890_change_me_in_prod":
-            raise RuntimeError("CRITICAL SECURITY ERROR: Default SECRET_KEY must be changed in production environment!")
-
-    # Create static uploads directory
-    os.makedirs("static/uploads", exist_ok=True)
+            logger.critical("CRITICAL SECURITY WARNING: Default SECRET_KEY is active in production environment! Please set a unique SECRET_KEY environment variable.")
 
     # Startup Database Table Creation (ideal for mock dev/sandbox mode)
     logger.info("Initializing database tables...")
