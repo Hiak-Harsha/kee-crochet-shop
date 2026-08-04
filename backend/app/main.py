@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -21,6 +22,9 @@ async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT == "production":
         if settings.SECRET_KEY == "cozy_crochet_yarn_secret_key_1234567890_change_me_in_prod":
             raise RuntimeError("CRITICAL SECURITY ERROR: Default SECRET_KEY must be changed in production environment!")
+
+    # Create static uploads directory
+    os.makedirs("static/uploads", exist_ok=True)
 
     # Startup Database Table Creation (ideal for mock dev/sandbox mode)
     logger.info("Initializing database tables...")
@@ -86,12 +90,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
+
+
 # Rate Limiting Middleware for sensitive auth and AI endpoints
 app.add_middleware(
     RateLimitingMiddleware,
     limit_sec=60,
     max_requests=15
 )
+
+# Mount Static Files for product image uploads
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Register API Routers
 app.include_router(auth.router, prefix="/api")

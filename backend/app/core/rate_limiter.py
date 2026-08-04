@@ -13,8 +13,8 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        # Limit OTP requests, logins, and AI chat calls to prevent cost abuse/brute force
-        if any(p in path for p in ["/auth/login", "/auth/otp/request", "/auth/otp/verify", "/ai/chat"]):
+        # Limit OTP requests, logins, and all AI calls to prevent cost abuse/brute force
+        if any(p in path for p in ["/auth/login", "/auth/otp/request", "/auth/otp/verify", "/ai/"]):
             client_ip = request.headers.get("x-forwarded-for")
             if client_ip:
                 client_ip = client_ip.split(",")[0].strip()

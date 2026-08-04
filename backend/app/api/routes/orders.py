@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import random
 import uuid
+from decimal import Decimal
 
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -45,11 +46,11 @@ async def create_order(
     if not cart.items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cart is empty")
 
-    subtotal = sum(float(i.product.price) * i.quantity for i in cart.items)
-    shipping_fee = 0 if subtotal >= 999 else 60
-    discount = 0  # TODO: coupon engine
+    subtotal = sum(Decimal(str(i.product.price)) * i.quantity for i in cart.items)
+    shipping_fee = Decimal("0") if subtotal >= Decimal("999") else Decimal("60")
+    discount = Decimal("0")  # TODO: coupon engine
     total = subtotal + shipping_fee - discount
-    if total <= 0:
+    if total <= Decimal("0"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order total must be greater than zero")
 
     # 1. Enforce Stock Check & Row Locking
@@ -229,12 +230,57 @@ async def admin_update_status(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(Order).where(Order.id == order_id))
+    result = await db.execute(
+        select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
+    )
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+
+    # If transitioning to cancelled/refunded, restore stock!
+    if new_status in (OrderStatus.cancelled, OrderStatus.refunded) and order.status not in (OrderStatus.cancelled, OrderStatus.refunded):
+        # Restore stock for each item in the order
+        for item in order.items:
+            if item.variant_id:
+                v_stmt = select(ProductVariant).where(ProductVariant.id == item.variant_id).with_for_update()
+                v_res = await db.execute(v_stmt)
+                variant = v_res.scalar_one_or_none()
+                if variant:
+                    variant.stock += item.quantity
+            else:
+                p_stmt = select(Product).where(Product.id == item.product_id).with_for_update()
+                p_res = await db.execute(p_stmt)
+                product = p_res.scalar_one_or_none()
+                if product:
+                    product.stock += item.quantity
+
+    # If transitioning FROM cancelled/refunded to an active status, re-deduct stock!
+    elif order.status in (OrderStatus.cancelled, OrderStatus.refunded) and new_status not in (OrderStatus.cancelled, OrderStatus.refunded):
+        for item in order.items:
+            if item.variant_id:
+                v_stmt = select(ProductVariant).where(ProductVariant.id == item.variant_id).with_for_update()
+                v_res = await db.execute(v_stmt)
+                variant = v_res.scalar_one_or_none()
+                if not variant or variant.stock < item.quantity:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Cannot reactivate order: Insufficient stock for variant of '{item.product_title}'"
+                    )
+                variant.stock -= item.quantity
+            else:
+                p_stmt = select(Product).where(Product.id == item.product_id).with_for_update()
+                p_res = await db.execute(p_stmt)
+                product = p_res.scalar_one_or_none()
+                if not product or product.stock < item.quantity:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Cannot reactivate order: Insufficient stock for product '{item.product_title}'"
+                    )
+                product.stock -= item.quantity
+
     order.status = new_status
     await db.commit()
+    
     stmt = select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
     result = await db.execute(stmt)
     return result.scalar_one()

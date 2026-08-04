@@ -145,6 +145,11 @@ export const api = {
     createCategory: (payload: any) => request("/categories", { method: "POST", body: JSON.stringify(payload) }),
     createCustomRequest: (payload: { description: string; color_palette: string | null }) => 
       request("/products/custom-requests", { method: "POST", body: JSON.stringify(payload) }),
+    uploadImage: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return request("/products/upload-image", { method: "POST", body: fd }, true);
+    },
   },
 
   // Cart

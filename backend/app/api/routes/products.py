@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -147,3 +147,35 @@ async def list_custom_requests_admin(
     from app.models.user import CustomRequest
     result = await db.execute(select(CustomRequest))
     return result.scalars().all()
+
+
+@router.post("/products/upload-image", response_model=dict)
+async def upload_product_image(
+    file: UploadFile = File(...),
+    _admin=Depends(get_current_admin)
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an image")
+    
+    # Cap size to 5MB
+    MAX_SIZE = 5 * 1024 * 1024
+    content = await file.read(MAX_SIZE + 1)
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is too large. Maximum size is 5MB.")
+    
+    # Generate unique filename
+    import uuid
+    from pathlib import Path
+    
+    file_ext = Path(file.filename).suffix
+    if not file_ext:
+        file_ext = ".jpg"
+        
+    unique_filename = f"{uuid.uuid4().hex}{file_ext}"
+    dest_path = Path("static/uploads") / unique_filename
+    
+    # Write file content
+    with open(dest_path, "wb") as buffer:
+        buffer.write(content)
+        
+    return {"url": f"/static/uploads/{unique_filename}"}

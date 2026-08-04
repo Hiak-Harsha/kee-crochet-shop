@@ -336,9 +336,9 @@ export default function ProductDetailPage() {
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div>
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-primary animate-pulse" /> AI Review Summarizer
+                    <Sparkles className="w-4 h-4 text-primary animate-pulse" /> AI Review Summarizer (Demo Simulation)
                   </h3>
-                  <p className="text-xs text-foreground/60">Generate an automated sentiment report from past customer unboxings.</p>
+                  <p className="text-xs text-foreground/60">Generate a sample sentiment report using simulated demonstration reviews.</p>
                 </div>
                 
                 <button

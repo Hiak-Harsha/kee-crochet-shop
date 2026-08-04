@@ -70,7 +70,11 @@ async def color_match_room(file: UploadFile = File(...), db: AsyncSession = Depe
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an image")
     
-    image_bytes = await file.read()
+    MAX_SIZE = 5 * 1024 * 1024
+    image_bytes = await file.read(MAX_SIZE + 1)
+    if len(image_bytes) > MAX_SIZE:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is too large. Maximum size is 5MB.")
+        
     catalog = await _get_serialized_catalog(db)
     
     result = await ai_service.suggest_colors(image_bytes, catalog)
@@ -90,7 +94,11 @@ async def upload_and_describe_product(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an image")
         
-    image_bytes = await file.read()
+    MAX_SIZE = 5 * 1024 * 1024
+    image_bytes = await file.read(MAX_SIZE + 1)
+    if len(image_bytes) > MAX_SIZE:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is too large. Maximum size is 5MB.")
+        
     result = await ai_service.describe_product(image_bytes)
     return AIProductDescriptionResponse(
         title=result.get("title", ""),
