@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  🚀 <strong><a href="https://kee-crochet-shop.vercel.app">Live Demo Website (Vercel)</a></strong> | ⚙️ <strong><a href="https://kee-crochet-api.onrender.com">Backend API (Render)</a></strong>
+</p>
+
+<p align="center">
   Built for <a href="https://instagram.com/kee_crochet">@kee_crochet</a> — a real Instagram crochet business selling handmade bouquets, plushies, and keychains.
 </p>
 
