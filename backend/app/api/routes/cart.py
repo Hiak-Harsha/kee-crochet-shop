@@ -18,7 +18,11 @@ router = APIRouter(prefix="/cart", tags=["cart"])
 async def _get_or_create_cart(db: AsyncSession, user: User) -> Cart:
     stmt = (
         select(Cart)
-        .options(selectinload(Cart.items).selectinload(CartItem.product))
+        .options(
+            selectinload(Cart.items)
+            .selectinload(CartItem.product)
+            .selectinload(Product.variants)
+        )
         .where(Cart.user_id == user.id)
     )
     result = await db.execute(stmt)
