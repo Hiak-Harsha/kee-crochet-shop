@@ -19,6 +19,9 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [deliverySlot, setDeliverySlot] = useState("standard");
   const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
 
   // Payment/Order Flow States
   const [loading, setLoading] = useState(false);
@@ -105,7 +108,7 @@ export default function CheckoutPage() {
         country: "India",
         phone: phone,
       },
-      coupon_code: couponCode.trim() || null,
+      coupon_code: appliedCoupon,
       delivery_slot: deliverySlot,
     };
 
@@ -219,7 +222,41 @@ export default function CheckoutPage() {
 
   const subtotal = cartPreview?.subtotal || 0;
   const shippingFee = subtotal >= 999 ? 0 : 60;
-  const total = subtotal + shippingFee;
+  const total = Math.max(0, subtotal + shippingFee - couponDiscount);
+
+  const handleApplyCoupon = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setCouponError("");
+    const code = couponCode.trim().toUpperCase();
+    
+    if (!code) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+    
+    if (code === "WELCOME10") {
+      setAppliedCoupon(code);
+      setCouponDiscount(Math.round(subtotal * 0.10));
+    } else if (code === "KEE15") {
+      setAppliedCoupon(code);
+      setCouponDiscount(Math.round(subtotal * 0.15));
+    } else if (code === "FREESHIP") {
+      setAppliedCoupon(code);
+      setCouponDiscount(shippingFee);
+    } else {
+      setCouponError("Invalid coupon code. Try WELCOME10, KEE15, or FREESHIP!");
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+    }
+  };
+
+  const handleRemoveCoupon = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponCode("");
+    setCouponError("");
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-screen">
@@ -381,6 +418,34 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
+              {/* Coupon entry form */}
+              {!appliedCoupon ? (
+                <div className="space-y-1.5 border-t border-secondary/20 pt-4">
+                  <label className="text-[10px] font-bold text-foreground/50 uppercase tracking-wider block">Have a Coupon?</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      placeholder="e.g. WELCOME10, KEE15"
+                      className="flex-1 bg-white border border-secondary p-2 rounded-xl text-xs focus:outline-none focus:border-primary uppercase font-semibold font-mono"
+                    />
+                    <button
+                      onClick={handleApplyCoupon}
+                      className="bg-primary text-white hover:bg-primary/95 px-3 py-2 rounded-xl text-xs font-bold transition shadow-sm"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  {couponError && <p className="text-[10px] text-rose-500 font-medium">{couponError}</p>}
+                </div>
+              ) : (
+                <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl flex items-center justify-between mt-4">
+                  <span>Coupon {appliedCoupon} applied!</span>
+                  <button onClick={handleRemoveCoupon} className="text-rose-500 hover:underline">Remove</button>
+                </div>
+              )}
+
               <div className="space-y-3.5 text-sm pt-4 border-t border-secondary/20">
                 <div className="flex justify-between text-foreground/85">
                   <span>Cart Subtotal</span>
@@ -390,6 +455,12 @@ export default function CheckoutPage() {
                   <span>Shipping & Handling</span>
                   <span>{shippingFee === 0 ? "FREE" : `₹${shippingFee}`}</span>
                 </div>
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-semibold bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100/50">
+                    <span>Discount ({appliedCoupon})</span>
+                    <span>-₹{couponDiscount}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-extrabold text-foreground border-t border-secondary/20 pt-4">
                   <span>Total Due</span>
                   <span>₹{total}</span>

@@ -174,7 +174,7 @@ export const api = {
     get: (id: string) => request(`/orders/${id}`),
     
     // Admin orders
-    adminListAll: () => request("/orders/admin/all"),
+    adminListAll: (page = 1, limit = 10) => request(`/orders/admin/all?page=${page}&limit=${limit}`),
     adminGetStats: () => request("/orders/admin/stats"),
     adminUpdateStatus: (id: string, status: string) => 
       request(`/orders/admin/${id}/status?new_status=${status}`, { method: "PATCH" }),

@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({ total_sales: 0, total_orders: 0, average_order_value: 0 });
   const [categories, setCategories] = useState<any[]>([]);
+  const [ordersPage, setOrdersPage] = useState(1);
 
   // Product Create Form States
   const [newTitle, setNewTitle] = useState("");
@@ -88,6 +89,15 @@ export default function AdminPage() {
     checkAdminAuth();
   }, []);
 
+  const loadOrdersOnly = async (page: number) => {
+    try {
+      const ords = await api.orders.adminListAll(page, 10);
+      setOrders(ords || []);
+    } catch (e: any) {
+      console.error("Failed to load orders page", e);
+    }
+  };
+
   const loadAdminData = async () => {
     setLoading(true);
     setError("");
@@ -95,7 +105,7 @@ export default function AdminPage() {
       const prods = await api.products.list();
       setProducts(prods || []);
       
-      const ords = await api.orders.adminListAll();
+      const ords = await api.orders.adminListAll(ordersPage, 10);
       setOrders(ords || []);
 
       const st = await api.orders.adminGetStats();
@@ -115,7 +125,7 @@ export default function AdminPage() {
     setError("");
     try {
       await api.orders.adminUpdateStatus(orderId, newStatus);
-      await loadAdminData();
+      await loadOrdersOnly(ordersPage);
     } catch (e: any) {
       console.error("Backend order status update failed", e);
       setError(e.message || "Failed to update order status.");
@@ -906,6 +916,37 @@ export default function AdminPage() {
                   </div>
                 </div>
               ))}
+              
+              {orders.length === 0 && (
+                <p className="text-center text-xs text-foreground/50 py-6 italic">No orders found on this page.</p>
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center pt-6 border-t border-secondary/35">
+              <button
+                disabled={ordersPage <= 1}
+                onClick={() => {
+                  const prev = ordersPage - 1;
+                  setOrdersPage(prev);
+                  loadOrdersOnly(prev);
+                }}
+                className="px-4 py-2 border border-secondary rounded-full text-xs font-bold hover:bg-secondary/10 transition disabled:opacity-40"
+              >
+                Previous Page
+              </button>
+              <span className="text-xs font-bold text-foreground/60">Page {ordersPage}</span>
+              <button
+                disabled={orders.length < 10}
+                onClick={() => {
+                  const next = ordersPage + 1;
+                  setOrdersPage(next);
+                  loadOrdersOnly(next);
+                }}
+                className="px-4 py-2 border border-secondary rounded-full text-xs font-bold hover:bg-secondary/10 transition disabled:opacity-40"
+              >
+                Next Page
+              </button>
             </div>
           </div>
         )}
