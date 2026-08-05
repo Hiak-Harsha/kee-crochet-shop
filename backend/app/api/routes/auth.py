@@ -18,6 +18,8 @@ from app.core.security import (
 )
 from app.models.cart import Cart
 from app.models.user import AuthProvider, OTPCode, User
+from app.services.email_service import send_otp_email, send_welcome_email
+from app.services.sms_service import send_otp_sms
 from app.schemas.user import (
     GoogleLogin,
     OTPRequest,
@@ -50,12 +52,17 @@ async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         auth_provider=AuthProvider.email,
+        is_verified=True,
     )
     db.add(user)
     await db.flush()
     db.add(Cart(user_id=user.id))
     await db.commit()
     await db.refresh(user)
+    
+    # Send a friendly welcome email (with console fallback)
+    await send_welcome_email(payload.email, payload.full_name)
+    
     return _issue_tokens(user)
 
 
@@ -78,8 +85,13 @@ async def request_otp(payload: OTPRequest, db: AsyncSession = Depends(get_db)):
     )
     db.add(otp)
     await db.commit()
-    # TODO: wire to SMS/email provider. For now the code is returned only in
-    # development so the flow is testable end-to-end without a real provider.
+    
+    is_email = "@" in payload.identifier
+    if is_email:
+        await send_otp_email(payload.identifier, code)
+    else:
+        await send_otp_sms(payload.identifier, code)
+    
     return {"message": "OTP sent", "dev_code": code if settings.ENVIRONMENT == "development" else None}
 
 
@@ -95,15 +107,29 @@ async def verify_otp(payload: OTPVerify, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired OTP")
     otp.is_used = True
 
-    result = await db.execute(select(User).where(User.email == payload.identifier))
-    user = result.scalar_one_or_none()
-    if not user:
-        user = User(email=payload.identifier, auth_provider=AuthProvider.otp, is_verified=True)
-        db.add(user)
-        await db.flush()
-        db.add(Cart(user_id=user.id))
+    is_email = "@" in payload.identifier
+    if is_email:
+        result = await db.execute(select(User).where(User.email == payload.identifier))
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(email=payload.identifier, auth_provider=AuthProvider.otp, is_verified=True)
+            db.add(user)
+            await db.flush()
+            db.add(Cart(user_id=user.id))
+        else:
+            user.is_verified = True
     else:
-        user.is_verified = True
+        result = await db.execute(select(User).where(User.phone == payload.identifier))
+        user = result.scalar_one_or_none()
+        if not user:
+            # For phone OTP signup, set email=None and phone=identifier
+            user = User(phone=payload.identifier, email=None, auth_provider=AuthProvider.otp, is_verified=True)
+            db.add(user)
+            await db.flush()
+            db.add(Cart(user_id=user.id))
+        else:
+            user.is_verified = True
+            
     await db.commit()
     await db.refresh(user)
     return _issue_tokens(user)

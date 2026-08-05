@@ -1,4 +1,4 @@
-import random
+import secrets
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -66,5 +66,5 @@ def decode_token(token: str) -> dict[str, Any] | None:
 
 
 def generate_otp() -> str:
-    """Generate a 6-digit numeric OTP."""
-    return "".join(random.choices(string.digits, k=6))
+    """Generate a cryptographically secure 6-digit numeric OTP."""
+    return "".join(secrets.choice(string.digits) for _ in range(6))

@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     # AI Services
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY", None)
     
+    # Email Services
+    RESEND_API_KEY: str | None = os.getenv("RESEND_API_KEY", None)
+    MAIL_FROM: str = os.getenv("MAIL_FROM", "Kee Crochet <onboarding@resend.dev>")
+    
+    # SMS Services
+    MSG91_AUTH_KEY: str | None = os.getenv("MSG91_AUTH_KEY", None)
+    MSG91_TEMPLATE_ID: str | None = os.getenv("MSG91_TEMPLATE_ID", None)
+    TWILIO_ACCOUNT_SID: str | None = os.getenv("TWILIO_ACCOUNT_SID", None)
+    TWILIO_AUTH_TOKEN: str | None = os.getenv("TWILIO_AUTH_TOKEN", None)
+    TWILIO_FROM_NUMBER: str | None = os.getenv("TWILIO_FROM_NUMBER", None)
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
