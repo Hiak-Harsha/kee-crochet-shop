@@ -1,6 +1,15 @@
 // API Client for Kee Crochet AI Platform backend
 
-let rawBaseUrl = process.env.NEXT_PUBLIC_API_URL || "https://kee-crochet-api.onrender.com/api";
+let rawBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+if (!rawBaseUrl) {
+  if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    rawBaseUrl = "http://localhost:8000/api";
+  } else {
+    rawBaseUrl = "https://kee-crochet-api.onrender.com/api";
+  }
+}
+
 if (rawBaseUrl.endsWith("/")) {
   rawBaseUrl = rawBaseUrl.slice(0, -1);
 }
