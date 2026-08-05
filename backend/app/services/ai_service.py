@@ -100,21 +100,83 @@ async def chat_shopper(messages: list[dict], products_list: list[dict], customer
     ], default=str)
 
     if not model:
-        # Fallback Mock Shopper
+        # Smart Dynamic Mock Shopper
         last_message = messages[-1]["content"].lower()
-        reply = "I'd love to help you find the perfect crochet gift! "
-        recs = []
-        if "gift" in last_message or "birthday" in last_message or "anniversary" in last_message:
-            reply += "For special occasions, our crochet Bouquets and Plushies are extremely popular and make warm, lasting gifts. What color palette do you think they would like best?"
-            recs = [str(p["id"]) for p in products_list if "bouquet" in p["title"].lower() or "plush" in p["title"].lower()]
-        elif "price" in last_message or "budget" in last_message or "under" in last_message:
-            reply += "I've filtered some cozy options that fit your budget. Keychains and small plushies are great affordable gifts!"
-            recs = [str(p["id"]) for p in products_list if float(p["price"]) < 500]
-        else:
-            reply += "We offer high-quality, handmade crochet keychains, plushies, and custom bouquets. Can you tell me a bit about who this is for and their favorite colors?"
-            recs = [str(p["id"]) for p in products_list[:2]]
         
-        return reply, recs[:3]
+        # 1. Parse colors
+        colors = ["orange", "pink", "blue", "green", "red", "yellow", "purple", "lavender", "white", "black", "cream", "beige"]
+        matched_colors = [c for c in colors if c in last_message]
+        
+        # 2. Parse product types
+        wants_bouquet = "bouquet" in last_message or "flower" in last_message or "rose" in last_message or "tulip" in last_message or "sunflower" in last_message
+        wants_plush = "plush" in last_message or "plushie" in last_message or "doll" in last_message or "toy" in last_message
+        wants_keychain = "keychain" in last_message or "accessory" in last_message or "bag charm" in last_message
+        
+        # 3. Parse recipient
+        recipient = None
+        for r in ["friend", "mom", "mother", "girlfriend", "sister", "wife", "boyfriend", "dad", "teacher"]:
+            if r in last_message:
+                recipient = r
+                break
+
+        # Let's dynamically recommend products matching colors or types
+        recs = []
+        for p in products_list:
+            p_title_lower = p["title"].lower()
+            p_colors = [c.lower() for c in p.get("colors", [])]
+            p_tags = [t.lower() for t in p.get("tags", [])]
+            
+            score = 0
+            if any(c in p_title_lower or c in p_colors or c in p_tags for c in matched_colors):
+                score += 3
+            if wants_bouquet and "bouquet" in p_title_lower:
+                score += 2
+            if wants_plush and "plush" in p_title_lower:
+                score += 2
+            if wants_keychain and "keychain" in p_title_lower:
+                score += 2
+                
+            if score > 0:
+                recs.append((score, str(p["id"]), p["title"]))
+                
+        # Sort recommendations by match score
+        recs.sort(key=lambda x: x[0], reverse=True)
+        recommended_ids = [r[1] for r in recs]
+        recommended_titles = [r[2] for r in recs]
+        
+        # Fallback if no specific matches found
+        if not recommended_ids:
+            recommended_ids = [str(p["id"]) for p in products_list[:3]]
+            recommended_titles = [p["title"] for p in products_list[:3]]
+            
+        # Build a warm, customized mock reply based on parsed variables
+        if matched_colors or wants_bouquet or wants_plush or wants_keychain or recipient:
+            reply_parts = []
+            if recipient:
+                reply_parts.append(f"That is so sweet! A handmade crochet item makes a wonderful gift for your {recipient}.")
+            
+            if matched_colors:
+                color_str = " and ".join(matched_colors)
+                reply_parts.append(f"Since they love {color_str}, I highly recommend picking a handcrafted piece matching those colors.")
+            
+            if wants_bouquet:
+                reply_parts.append("Our everlasting crochet flower bouquets (especially tulips and sunflowers) are perfect for bringing warmth and smiles.")
+            elif wants_plush:
+                reply_parts.append("Our soft yarn plushies are super squishy and make the cutest desk or bedside companions.")
+            elif wants_keychain:
+                reply_parts.append("Our mini keychains are great bag charms and daily reminders of your thoughtful gift.")
+                
+            if recommended_titles:
+                titles_str = ", ".join(recommended_titles[:2])
+                reply_parts.append(f"I've selected some lovely choices for you, such as the {titles_str}.")
+            else:
+                reply_parts.append("Feel free to browse our main catalog for more inspiration!")
+                
+            reply = " ".join(reply_parts)
+        else:
+            reply = "I'd love to help you find the perfect crochet gift! We offer high-quality, handmade crochet keychains, plushies, and custom bouquets. Can you tell me a bit about who this is for and their favorite colors?"
+            
+        return reply, recommended_ids[:3]
 
     prompt = f"""
     You are 'Kee', a warm, helpful, and charming AI Personal Shopper for 'Kee Crochet', a premium handmade crochet store.
