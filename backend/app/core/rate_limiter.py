@@ -1,4 +1,5 @@
 import time
+import random
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -15,14 +16,28 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         # Limit OTP requests, logins, and all AI calls to prevent cost abuse/brute force
         if any(p in path for p in ["/auth/login", "/auth/otp/request", "/auth/otp/verify", "/ai/"]):
-            client_ip = request.headers.get("x-forwarded-for")
-            if client_ip:
-                client_ip = client_ip.split(",")[0].strip()
-            else:
+            client_ip = None
+            xff = request.headers.get("x-forwarded-for")
+            if xff:
+                # Render/Load balancers append real IP first. Split and take the first client address.
+                parts = [p.strip() for p in xff.split(",")]
+                if parts:
+                    client_ip = parts[0]
+            if not client_ip:
                 client_ip = request.client.host if request.client else "unknown"
+                
             key = f"{client_ip}:{path}"
-            
             now = time.time()
+            
+            # Periodically prune expired rate limit entries to prevent memory leaks (5% chance per request)
+            if random.random() < 0.05:
+                expired_keys = []
+                for k, ts in self.history.items():
+                    if not ts or now - ts[-1] > self.limit_sec:
+                        expired_keys.append(k)
+                for k in expired_keys:
+                    self.history.pop(k, None)
+            
             # Filter history to keep only requests within the sliding window
             timestamps = self.history.get(key, [])
             timestamps = [t for t in timestamps if now - t < self.limit_sec]

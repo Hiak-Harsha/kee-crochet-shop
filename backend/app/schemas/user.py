@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+import re
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 
 
 class UserRegister(BaseModel):
@@ -15,12 +16,39 @@ class UserLogin(BaseModel):
 
 
 class OTPRequest(BaseModel):
-    identifier: EmailStr
+    identifier: str
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_identifier(cls, v: str) -> str:
+        v = v.strip()
+        if "@" in v:
+            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", v):
+                raise ValueError("Invalid email address format")
+            return v
+        # Clean phone input to verify digits count
+        clean = "".join(c for c in v if c.isdigit())
+        if len(clean) < 10 or len(clean) > 15:
+            raise ValueError("Identifier must be a valid email or a 10-15 digit phone number")
+        return v
 
 
 class OTPVerify(BaseModel):
-    identifier: EmailStr
+    identifier: str
     code: str
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_identifier(cls, v: str) -> str:
+        v = v.strip()
+        if "@" in v:
+            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", v):
+                raise ValueError("Invalid email address format")
+            return v
+        clean = "".join(c for c in v if c.isdigit())
+        if len(clean) < 10 or len(clean) > 15:
+            raise ValueError("Identifier must be a valid email or a 10-15 digit phone number")
+        return v
 
 
 class GoogleLogin(BaseModel):
@@ -41,7 +69,7 @@ class TokenResponse(BaseModel):
 
 class UserOut(BaseModel):
     id: uuid.UUID
-    email: EmailStr
+    email: str | None = None
     full_name: str | None = None
     phone: str | None = None
     role: str

@@ -19,6 +19,8 @@ engine = create_async_engine(
     db_url,
     connect_args=connect_args,
     echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
 )
 
 # Create session factory

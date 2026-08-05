@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -52,18 +52,36 @@ async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         auth_provider=AuthProvider.email,
-        is_verified=True,
+        is_verified=False,
     )
     db.add(user)
     await db.flush()
     db.add(Cart(user_id=user.id))
+    
+    # Automatically clean up expired OTP codes to prevent database bloat
+    await db.execute(
+        delete(OTPCode).where(OTPCode.expires_at < datetime.now(timezone.utc))
+    )
+    
+    # Generate an activation OTP code
+    code = generate_otp()
+    otp = OTPCode(
+        identifier=payload.email,
+        code=code,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES),
+    )
+    db.add(otp)
     await db.commit()
     await db.refresh(user)
     
-    # Send a friendly welcome email (with console fallback)
-    await send_welcome_email(payload.email, payload.full_name)
+    # Send a friendly welcome email containing the activation code (with console fallback)
+    await send_welcome_email(payload.email, payload.full_name, code)
     
-    return _issue_tokens(user)
+    # Raise a 403 Forbidden to tell the user they need to verify
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "Account created successfully. A verification code has been sent to your email to activate your account."
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -72,11 +90,54 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+        
+    if not user.is_verified:
+        # Automatically clean up expired OTP codes
+        await db.execute(
+            delete(OTPCode).where(OTPCode.expires_at < datetime.now(timezone.utc))
+        )
+        
+        # Generate new verification code
+        code = generate_otp()
+        otp = OTPCode(
+            identifier=user.email,
+            code=code,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES),
+        )
+        db.add(otp)
+        await db.commit()
+        await send_otp_email(user.email, code)
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Email address is not verified. A new verification code has been sent to your email."
+        )
+        
     return _issue_tokens(user)
 
 
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
 async def request_otp(payload: OTPRequest, db: AsyncSession = Depends(get_db)):
+    # Automatically clean up expired OTP codes to prevent database bloat
+    await db.execute(
+        delete(OTPCode).where(OTPCode.expires_at < datetime.now(timezone.utc))
+    )
+    
+    # Rate limit by identifier: at most 1 OTP request every 60 seconds per email/phone
+    last_otp_result = await db.execute(
+        select(OTPCode)
+        .where(OTPCode.identifier == payload.identifier)
+        .order_by(OTPCode.created_at.desc())
+        .limit(1)
+    )
+    last_otp = last_otp_result.scalar_one_or_none()
+    if last_otp:
+        time_passed = (datetime.now(timezone.utc) - last_otp.created_at.replace(tzinfo=timezone.utc)).total_seconds()
+        if time_passed < 60:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"Please wait {int(60 - time_passed)} seconds before requesting another code."
+            )
+            
     code = generate_otp()
     otp = OTPCode(
         identifier=payload.identifier,

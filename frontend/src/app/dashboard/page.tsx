@@ -76,6 +76,55 @@ function DashboardContent() {
     };
   }, [searchParams]);
 
+  // Load Google Identity Services dynamically
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    script.onload = () => {
+      const gWindow = window as any;
+      if (gWindow.google) {
+        gWindow.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: async (response: any) => {
+            setAuthLoading(true);
+            setAuthError("");
+            try {
+              const tokens = await api.auth.googleLogin(response.credential);
+              localStorage.setItem("access_token", tokens.access_token);
+              localStorage.setItem("refresh_token", tokens.refresh_token);
+              setIsLoggedIn(true);
+              loadOrders();
+            } catch (err: any) {
+              setAuthError(err.message || "Google Sign-in failed");
+            } finally {
+              setAuthLoading(false);
+            }
+          },
+        });
+
+        const googleBtnEl = document.getElementById("google-signin-btn-container");
+        if (googleBtnEl) {
+          gWindow.google.accounts.id.renderButton(googleBtnEl, {
+            theme: "outline",
+            size: "large",
+            width: 380,
+          });
+        }
+      }
+    };
+
+    return () => {
+      script.remove();
+    };
+  }, []);
+
   // Handle standard registration
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,12 +132,19 @@ function DashboardContent() {
     setAuthError("");
     try {
       const tokens = await api.auth.register({ email, password, full_name: fullName });
-      localStorage.setItem("access_token", tokens.access_token);
-      localStorage.setItem("refresh_token", tokens.refresh_token);
-      setIsLoggedIn(true);
-      loadOrders();
+      if (tokens && tokens.access_token) {
+        localStorage.setItem("access_token", tokens.access_token);
+        localStorage.setItem("refresh_token", tokens.refresh_token);
+        setIsLoggedIn(true);
+        loadOrders();
+      }
     } catch (err: any) {
-      setAuthError(err.message || "Registration failed");
+      const msg = err.message || "Registration failed";
+      setAuthError(msg);
+      if (msg.toLowerCase().includes("sent to your email") || msg.toLowerCase().includes("activate") || msg.toLowerCase().includes("verify")) {
+        setAuthTab("otp");
+        setOtpRequested(true);
+      }
     }
     setAuthLoading(false);
   };
@@ -104,7 +160,6 @@ function DashboardContent() {
       localStorage.setItem("refresh_token", tokens.refresh_token);
       setIsLoggedIn(true);
       
-      // Determine if admin
       const payload = JSON.parse(atob(tokens.access_token.split(".")[1]));
       if (payload.role === "admin") {
         router.push("/admin");
@@ -112,7 +167,12 @@ function DashboardContent() {
         loadOrders();
       }
     } catch (err: any) {
-      setAuthError(err.message || "Invalid email or password");
+      const msg = err.message || "Invalid email or password";
+      setAuthError(msg);
+      if (msg.toLowerCase().includes("not verified") || msg.toLowerCase().includes("verification code")) {
+        setAuthTab("otp");
+        setOtpRequested(true);
+      }
     }
     setAuthLoading(false);
   };
@@ -121,7 +181,7 @@ function DashboardContent() {
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
-      setAuthError("Email is required");
+      setAuthError("Email or phone number is required");
       return;
     }
     setAuthLoading(true);
@@ -130,7 +190,7 @@ function DashboardContent() {
       const resp = await api.auth.requestOtp({ identifier: email });
       setOtpRequested(true);
       if (resp.dev_code) {
-        setDevOtp(resp.dev_code); // Dev convenience
+        setDevOtp(resp.dev_code);
       }
     } catch (err: any) {
       setAuthError(err.message || "OTP request failed");
@@ -255,14 +315,14 @@ function DashboardContent() {
                 {!otpRequested ? (
                   <form onSubmit={handleRequestOtp} className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-foreground/75">Email Address</label>
+                      <label className="text-xs font-bold text-foreground/75">Email or Phone Number</label>
                       <input
-                        type="email"
+                        type="text"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full p-3 rounded-xl border border-secondary bg-white focus:outline-none focus:ring-2 focus:ring-primary/45 text-sm"
-                        placeholder="you@example.com"
+                        placeholder="you@example.com or +919876543210"
                       />
                     </div>
                     <button
@@ -287,7 +347,7 @@ function DashboardContent() {
                         placeholder="000000"
                       />
                     </div>
-                    {devOtp && (
+                    {devOtp && process.env.NODE_ENV !== "production" && (
                       <p className="text-[10px] bg-yellow-50 text-yellow-800 p-2 rounded-lg font-bold border border-yellow-200">
                         Dev Sandbox Bypass Code: <span className="font-mono text-xs">{devOtp}</span>
                       </p>
@@ -349,6 +409,36 @@ function DashboardContent() {
                   {authLoading ? "Creating Account..." : "Create Account"}
                 </button>
               </form>
+            )}
+
+            {/* OAuth Separator & Google Sign In */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-secondary/50"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider">
+                <span className="bg-white px-2 text-foreground/50">Or continue with</span>
+              </div>
+            </div>
+
+            <div className="flex justify-center w-full">
+              <div id="google-signin-btn-container" className="w-full"></div>
+            </div>
+            
+            {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+              <button
+                type="button"
+                onClick={() => setAuthError("Google Sign-In requires configuring NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment.")}
+                className="w-full flex items-center justify-center gap-3 border border-secondary bg-white hover:bg-secondary/10 py-2.5 rounded-full font-bold shadow-sm text-xs transition text-foreground/70"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#EA4335"
+                    d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 0 1 8 12.5a5.99 5.99 0 0 1 5.991-6.013c1.558 0 2.902.593 3.924 1.555l3.125-3.124C19.123 3.121 16.745 2 13.99 2A10 10 0 0 0 4 12a10 10 0 0 0 10 10c5.56 0 10-4.05 10-10 0-.68-.08-1.336-.24-1.715H12.24Z"
+                  />
+                </svg>
+                Sign In with Google
+              </button>
             )}
           </div>
         ) : (

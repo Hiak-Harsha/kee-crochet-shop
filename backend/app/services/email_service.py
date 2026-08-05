@@ -70,7 +70,7 @@ async def send_otp_email(to_email: str, code: str) -> bool:
         return False
 
 
-async def send_welcome_email(to_email: str, full_name: str | None) -> bool:
+async def send_welcome_email(to_email: str, full_name: str | None, code: str) -> bool:
     """
     Send a welcome email to newly registered users via Resend if key exists,
     otherwise print a simulation fallback.
@@ -84,10 +84,16 @@ async def send_welcome_email(to_email: str, full_name: str | None) -> bool:
         Hi {name_str},
       </p>
       <p style="font-size: 14px; color: #4a5568; line-height: 1.6;">
-        Thank you for joining our community of handcrafted crochet lovers. Your account has been successfully verified and activated!
+        Thank you for joining our community of handcrafted crochet lovers! Your account has been created.
       </p>
+      <p style="font-size: 14px; color: #4a5568; line-height: 1.6; font-weight: bold;">
+        Please activate your account by entering the verification code below:
+      </p>
+      <div style="margin: 25px 0; padding: 15px; background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 12px; text-align: center;">
+        <span style="font-size: 32px; font-weight: 800; font-family: monospace; letter-spacing: 4px; color: #b45309;">{code}</span>
+      </div>
       <p style="font-size: 14px; color: #4a5568; line-height: 1.6;">
-        Explore our cozy collections of flower bouquets, custom-stitched plushies, and keychains today. If you need any assistance, our AI Personal Shopper "Kee" is always online to help you find the perfect gift!
+        If you need any assistance, our AI Personal Shopper "Kee" is always online to help you find the perfect gift!
       </p>
       <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 25px 0;" />
       <p style="font-size: 10px; color: #a0aec0; text-align: center;">
@@ -105,7 +111,7 @@ async def send_welcome_email(to_email: str, full_name: str | None) -> bool:
             f"Recipient : {to_email}\n"
             f"Sender    : {settings.MAIL_FROM}\n"
             f"Subject   : {subject}\n"
-            f"Message   : Welcome to Kee Crochet, {name_str}! Account activated.\n"
+            f"Message   : Welcome to Kee Crochet, {name_str}! Activation Code: {code}\n"
             f"========================================================================\n"
         )
         return True
