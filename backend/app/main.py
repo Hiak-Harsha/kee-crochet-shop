@@ -26,6 +26,12 @@ async def lifespan(app: FastAPI):
         if settings.SECRET_KEY == "cozy_crochet_yarn_secret_key_1234567890_change_me_in_prod":
             logger.critical("CRITICAL SECURITY WARNING: Default SECRET_KEY is active in production environment! Please set a unique SECRET_KEY environment variable.")
 
+    # Ensure all models are imported so they are registered on Base.metadata
+    from app.models.user import User, AIChatSession, AIChatMessage, OTPCode, CustomRequest
+    from app.models.product import Category, Product, ProductVariant, ProductReview
+    from app.models.cart import Cart, CartItem
+    from app.models.order import Order, OrderItem
+
     # Startup Database Table Creation (ideal for mock dev/sandbox mode)
     logger.info("Initializing database tables...")
     async with engine.begin() as conn:

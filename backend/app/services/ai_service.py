@@ -79,10 +79,10 @@ async def semantic_search(query: str, products_list: list[dict]) -> list[str]:
         return [str(p.get("id")) for p in products_list[:2]]
 
 
-async def chat_shopper(messages: list[dict], products_list: list[dict]) -> tuple[str, list[str]]:
+async def chat_shopper(messages: list[dict], products_list: list[dict], customer_context: str = "") -> tuple[str, list[str]]:
     """
     Personal shopper chat engine. 
-    Accepts full message history and product context.
+    Accepts full message history, product context, and optional customer context (profile/cart/orders).
     Returns: (assistant_reply_text, list_of_recommended_product_ids)
     """
     model = _get_model()
@@ -120,13 +120,15 @@ async def chat_shopper(messages: list[dict], products_list: list[dict]) -> tuple
     You are 'Kee', a warm, helpful, and charming AI Personal Shopper for 'Kee Crochet', a premium handmade crochet store.
     You assist customers in finding the right products, customizing orders, and suggesting gifts.
     
+    {customer_context}
+    
     Here is our current store catalog:
     {catalog_summary}
     
     Here is the conversation history:
     {chat_history}
     
-    Respond to the user with a friendly, helpful reply.
+    Respond to the user with a friendly, helpful reply. Address them by name if provided in their profile above, and reference their cart/purchase history if relevant (e.g. 'Since you liked the lavender bouquet from your past order...').
     Also, identify up to 3 product IDs from the catalog that fit their current search or request.
     
     Your response must be in JSON format with exactly two keys: "reply" (string) and "recommended_product_ids" (list of strings).

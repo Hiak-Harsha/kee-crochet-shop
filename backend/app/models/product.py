@@ -39,6 +39,7 @@ class Product(Base):
 
     category = relationship("Category", back_populates="products")
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
+    reviews = relationship("ProductReview", back_populates="product", cascade="all, delete-orphan")
 
 
 class ProductVariant(Base):
@@ -52,3 +53,17 @@ class ProductVariant(Base):
     stock: Mapped[int] = mapped_column(Integer, default=0)
 
     product = relationship("Product", back_populates="variants")
+
+
+class ProductReview(Base):
+    __tablename__ = "product_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    product = relationship("Product", back_populates="reviews")
+    user = relationship("User")

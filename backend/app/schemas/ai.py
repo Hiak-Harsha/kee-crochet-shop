@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import uuid
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict
 
 
 class AIChatMessage(BaseModel):
@@ -42,3 +44,13 @@ class AIReviewSummarizerResponse(BaseModel):
 
 class AIFAQResponse(BaseModel):
     answer: str
+
+
+class AIChatMessageOut(BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -27,6 +27,7 @@ class CategoryCreate(BaseModel):
 
 class CategoryOut(CategoryCreate):
     id: uuid.UUID
+    starting_price: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,5 +79,20 @@ class ProductOut(BaseModel):
     variants: list[ProductVariantOut]
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductReviewCreate(BaseModel):
+    rating: int
+    comment: str
+
+
+class ProductReviewOut(ProductReviewCreate):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str | None = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

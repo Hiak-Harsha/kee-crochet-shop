@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Send, Upload, Heart, Image as ImageIcon, ShoppingCart, MessageSquare, Paintbrush, ArrowRight } from "lucide-react";
+import { Sparkles, Send, Upload, Heart, Image as ImageIcon, ShoppingCart, MessageSquare, Paintbrush, ArrowRight, Trash2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 import Link from "next/link";
@@ -34,8 +34,8 @@ export default function ShopHelperPage() {
   }, [messages]);
 
   useEffect(() => {
-    // Pre-fetch product list for matching recommendations
-    const fetchCatalog = async () => {
+    // Pre-fetch product list and chat history
+    const fetchCatalogAndHistory = async () => {
       try {
         setError("");
         const prods = await api.products.list();
@@ -44,9 +44,44 @@ export default function ShopHelperPage() {
         console.error("Failed to load catalog:", e);
         setError("Failed to fetch product catalog from the database. Please verify the backend is online.");
       }
+
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (token) {
+        try {
+          const history = await api.ai.getChatHistory();
+          if (history && history.length > 0) {
+            setMessages(history.map((m: any) => ({ role: m.role, content: m.content })));
+          }
+        } catch (err) {
+          console.warn("Failed to load chat history:", err);
+        }
+      }
     };
-    fetchCatalog();
+    fetchCatalogAndHistory();
   }, []);
+
+  const handleClearHistory = async () => {
+    if (chatLoading) return;
+    const confirmClear = window.confirm("Are you sure you want to clear your chat history?");
+    if (!confirmClear) return;
+    
+    setChatLoading(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (token) {
+        await api.ai.clearChatHistory();
+      }
+      setMessages([
+        { role: "assistant", content: "Hi! I'm Kee, your AI Personal Shopper 🧶. Whether you're looking for a birthday bouquet, a desk friend, or a custom gift under budget, tell me who it's for, and I will recommend some ideas!" }
+      ]);
+      setRecommendedProducts([]);
+    } catch (err) {
+      console.error("Failed to clear chat history:", err);
+      alert("Failed to clear chat history. Please try again.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   // Handle Send Chat
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -164,6 +199,17 @@ export default function ShopHelperPage() {
                     </span>
                   </div>
                 </div>
+                
+                {messages.length > 1 && (
+                  <button
+                    onClick={handleClearHistory}
+                    disabled={chatLoading}
+                    className="text-foreground/50 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50 border border-transparent hover:border-red-100 disabled:opacity-50"
+                    title="Clear Chat History"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Message History */}

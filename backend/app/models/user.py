@@ -59,3 +59,26 @@ class CustomRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
+
+
+class AIChatSession(Base):
+    __tablename__ = "ai_chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    messages = relationship("AIChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+class AIChatMessage(Base):
+    __tablename__ = "ai_chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ai_chat_sessions.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)  # "user" or "assistant"
+    content: Mapped[str] = mapped_column(String(4000), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session = relationship("AIChatSession", back_populates="messages")

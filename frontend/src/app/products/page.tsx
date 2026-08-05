@@ -156,9 +156,14 @@ export default function ProductsPage() {
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.slug)}
-                    className={`text-left text-sm py-1.5 px-3 rounded-full font-semibold transition ${selectedCategory === cat.slug ? "bg-primary text-white" : "hover:bg-secondary/20 text-foreground/80"}`}
+                    className={`text-left text-sm py-2 px-4 rounded-cozy font-semibold transition flex flex-col items-start ${selectedCategory === cat.slug ? "bg-primary text-white shadow-sm" : "hover:bg-secondary/20 text-foreground/80 border border-secondary/30"}`}
                   >
-                    {cat.name}
+                    <span>{cat.name}</span>
+                    {cat.starting_price && (
+                      <span className={`text-[10px] font-normal transition mt-0.5 ${selectedCategory === cat.slug ? "text-white/80" : "text-foreground/50"}`}>
+                        from ₹{Math.round(cat.starting_price)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

@@ -1,19 +1,21 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_db
-from app.models.product import Category, Product, ProductVariant
+from app.models.product import Category, Product, ProductVariant, ProductReview
 from app.schemas.product import (
     CategoryCreate,
     CategoryOut,
     ProductCreate,
     ProductOut,
     ProductUpdate,
+    ProductReviewCreate,
+    ProductReviewOut,
 )
 from app.schemas.user import CustomRequestCreate, CustomRequestOut
 
@@ -23,7 +25,19 @@ router = APIRouter(tags=["products"])
 @router.get("/categories", response_model=list[CategoryOut])
 async def list_categories(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Category))
-    return result.scalars().all()
+    categories = result.scalars().all()
+    
+    out_categories = []
+    for cat in categories:
+        price_stmt = select(func.min(Product.price)).where(Product.category_id == cat.id, Product.is_active == True)  # noqa: E712
+        price_res = await db.execute(price_stmt)
+        min_price = price_res.scalar()
+        
+        cat_out = CategoryOut.model_validate(cat)
+        cat_out.starting_price = float(min_price) if min_price is not None else None
+        out_categories.append(cat_out)
+        
+    return out_categories
 
 
 @router.post("/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
@@ -179,3 +193,55 @@ async def upload_product_image(
         buffer.write(content)
         
     return {"url": f"/static/uploads/{unique_filename}"}
+
+
+@router.get("/products/{product_id}/reviews", response_model=list[ProductReviewOut])
+async def list_product_reviews(product_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    stmt = (
+        select(ProductReview)
+        .options(selectinload(ProductReview.user))
+        .where(ProductReview.product_id == product_id)
+        .order_by(ProductReview.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    reviews = result.scalars().all()
+    
+    out_reviews = []
+    for r in reviews:
+        rout = ProductReviewOut.model_validate(r)
+        rout.user_name = r.user.full_name if r.user else "Anonymous"
+        out_reviews.append(rout)
+    return out_reviews
+
+
+@router.post("/products/{product_id}/reviews", response_model=ProductReviewOut, status_code=status.HTTP_201_CREATED)
+async def create_product_review(
+    product_id: uuid.UUID,
+    payload: ProductReviewCreate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    product_res = await db.execute(select(Product).where(Product.id == product_id))
+    product = product_res.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+        
+    dup_res = await db.execute(
+        select(ProductReview).where(ProductReview.product_id == product_id, ProductReview.user_id == user.id)
+    )
+    if dup_res.scalar_one_or_none():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You have already reviewed this product.")
+        
+    review = ProductReview(
+        product_id=product_id,
+        user_id=user.id,
+        rating=payload.rating,
+        comment=payload.comment
+    )
+    db.add(review)
+    await db.commit()
+    await db.refresh(review)
+    
+    rout = ProductReviewOut.model_validate(review)
+    rout.user_name = user.full_name
+    return rout

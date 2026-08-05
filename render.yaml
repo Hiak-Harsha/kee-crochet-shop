@@ -32,6 +32,10 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.0"
     healthCheckPath: /
+    disk:
+      name: uploads-disk
+      mountPath: /opt/render/project/src/backend/static/uploads
+      sizeGB: 1
 
 databases:
   - name: kee-crochet-db

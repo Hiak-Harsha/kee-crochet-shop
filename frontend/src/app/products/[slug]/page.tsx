@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ShoppingBag, ArrowLeft, Heart, Gift, Sparkles, Check, ChevronRight } from "lucide-react";
+import { ShoppingBag, ArrowLeft, Heart, Gift, Sparkles, Check, ChevronRight, Star } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Image from "next/image";
 import { api } from "@/lib/api";
@@ -29,6 +29,14 @@ export default function ProductDetailPage() {
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
 
+  // Product Reviews State
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
+
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -46,6 +54,14 @@ export default function ProductDetailPage() {
         }
         if (prod.variants && prod.variants.length > 0) {
           setSelectedVariant(prod.variants[0]);
+        }
+        
+        // Fetch reviews from database
+        try {
+          const revs = await api.products.getReviews(prod.id);
+          setReviews(revs || []);
+        } catch (revErr) {
+          console.warn("Failed to load reviews from database:", revErr);
         }
       } catch (e: any) {
         console.error("Failed to fetch product details", e);
@@ -105,6 +121,31 @@ export default function ProductDetailPage() {
       });
     }
     setAiSummaryLoading(false);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product || !reviewComment.trim()) return;
+    setSubmittingReview(true);
+    setReviewError("");
+    setReviewSuccess(false);
+
+    try {
+      const newReview = await api.products.addReview(product.id, {
+        rating: reviewRating,
+        comment: reviewComment.trim()
+      });
+      setReviews((prev) => [newReview, ...prev]);
+      setReviewComment("");
+      setReviewRating(5);
+      setReviewSuccess(true);
+      setTimeout(() => setReviewSuccess(false), 3000);
+    } catch (err: any) {
+      console.error("Failed to submit review:", err);
+      setReviewError(err.message || "Failed to submit review. Make sure you are signed in and haven't already reviewed this product.");
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   if (loading) {
@@ -336,19 +377,23 @@ export default function ProductDetailPage() {
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div>
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-primary animate-pulse" /> AI Review Summarizer (Demo Simulation)
+                    <Sparkles className="w-4 h-4 text-primary animate-pulse" /> AI Review Summarizer
                   </h3>
-                  <p className="text-xs text-foreground/60">Generate a sample sentiment report using simulated demonstration reviews.</p>
+                  <p className="text-xs text-foreground/60">Generate a smart sentiment synthesis and pros/cons report from customer reviews.</p>
                 </div>
                 
                 <button
                   onClick={handleSummarizeReviews}
-                  disabled={aiSummaryLoading}
-                  className="text-xs bg-primary text-white hover:bg-primary/90 px-4 py-2 rounded-full font-extrabold shadow-sm transition"
+                  disabled={aiSummaryLoading || reviews.length === 0}
+                  className="text-xs bg-primary text-white hover:bg-primary/90 px-4 py-2 rounded-full font-extrabold shadow-sm transition disabled:opacity-50"
                 >
                   {aiSummaryLoading ? "Analyzing..." : "Generate AI Summary"}
                 </button>
               </div>
+
+              {reviews.length === 0 && (
+                <p className="text-[10px] text-foreground/50 italic">Add customer reviews below to enable AI summarization!</p>
+              )}
 
               {aiSummary && (
                 <div className="bg-white p-4 rounded-xl border border-primary/10 space-y-3.5 text-xs">
@@ -361,24 +406,145 @@ export default function ProductDetailPage() {
                   
                   <p className="text-foreground/80 leading-relaxed font-medium">{aiSummary.summary}</p>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-secondary/20">
-                    <div className="space-y-1.5">
-                      <span className="font-extrabold text-emerald-600 uppercase tracking-wider text-[10px]">Pros:</span>
-                      <ul className="list-disc list-inside space-y-0.5 text-foreground/70">
-                        {aiSummary.pros.map((pro: string, i: number) => <li key={i}>{pro}</li>)}
-                      </ul>
+                  {aiSummary.pros && aiSummary.pros.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-secondary/20">
+                      <div className="space-y-1.5">
+                        <span className="font-extrabold text-emerald-600 uppercase tracking-wider text-[10px]">Pros:</span>
+                        <ul className="list-disc list-inside space-y-0.5 text-foreground/70">
+                          {aiSummary.pros.map((pro: string, i: number) => <li key={i}>{pro}</li>)}
+                        </ul>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <span className="font-extrabold text-rose-500 uppercase tracking-wider text-[10px]">Cons:</span>
+                        <ul className="list-disc list-inside space-y-0.5 text-foreground/70">
+                          {aiSummary.cons.map((con: string, i: number) => <li key={i}>{con}</li>)}
+                        </ul>
+                      </div>
                     </div>
-                    
-                    <div className="space-y-1.5">
-                      <span className="font-extrabold text-rose-500 uppercase tracking-wider text-[10px]">Cons:</span>
-                      <ul className="list-disc list-inside space-y-0.5 text-foreground/70">
-                        {aiSummary.cons.map((con: string, i: number) => <li key={i}>{con}</li>)}
-                      </ul>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Reviews Section */}
+        <div className="mt-16 border-t border-secondary/45 pt-12 grid grid-cols-1 lg:grid-cols-3 gap-12">
+          {/* Left Column: Summary & Submit Form */}
+          <div className="lg:col-span-1 space-y-6">
+            <h3 className="text-2xl font-bold text-foreground">Customer Reviews</h3>
+            
+            {/* Ratings distribution */}
+            <div className="bg-secondary/10 p-5 rounded-cozy space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-4xl font-extrabold text-foreground">
+                  {reviews.length > 0
+                    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+                    : "0.0"}
+                </span>
+                <div>
+                  <div className="flex text-amber-500">
+                    {Array.from({ length: 5 }).map((_, i) => {
+                      const avg = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+                      return <Star key={i} className={`w-4 h-4 ${i < Math.round(avg) ? "fill-current" : "opacity-30"}`} />;
+                    })}
+                  </div>
+                  <p className="text-xs text-foreground/60 mt-0.5">{reviews.length} reviews</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Write a Review Form */}
+            <form onSubmit={handleSubmitReview} className="bg-white border border-secondary/50 p-6 rounded-cozy space-y-4 shadow-sm">
+              <h4 className="font-bold text-base text-foreground">Share Your Experience</h4>
+              
+              {reviewError && (
+                <div className="bg-rose-50 text-rose-800 text-xs p-3 rounded-lg border border-rose-200">
+                  {reviewError}
+                </div>
+              )}
+              {reviewSuccess && (
+                <div className="bg-emerald-50 text-emerald-800 text-xs p-3 rounded-lg border border-emerald-200">
+                  Review posted successfully! Thank you.
+                </div>
+              )}
+
+              {/* Star Selector */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground/80 block">Rating</label>
+                <div className="flex gap-1.5 text-amber-500">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className="hover:scale-110 transition-transform focus:outline-none"
+                    >
+                      <Star className={`w-6 h-6 ${star <= reviewRating ? "fill-current" : "opacity-30"}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Comment Input */}
+              <div className="space-y-1">
+                <label htmlFor="comment" className="text-xs font-bold text-foreground/80 block">Your Comment</label>
+                <textarea
+                  id="comment"
+                  rows={3}
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="What did you think of the design, texture, and colors?"
+                  required
+                  className="w-full text-sm border border-secondary p-3 rounded-xl focus:outline-none focus:border-primary resize-none"
+                ></textarea>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingReview}
+                className="w-full bg-primary text-white hover:bg-primary/95 py-2.5 rounded-full font-bold shadow-sm text-xs disabled:opacity-50 transition"
+              >
+                {submittingReview ? "Posting..." : "Submit Review"}
+              </button>
+            </form>
+          </div>
+
+          {/* Right Column: Reviews List */}
+          <div className="lg:col-span-2 space-y-6">
+            <h4 className="font-bold text-lg text-foreground">Recent Reviews</h4>
+            
+            {reviews.length === 0 ? (
+              <p className="text-sm text-foreground/50 italic bg-secondary/5 p-6 rounded-xl text-center border border-dashed border-secondary/40">
+                No reviews yet. Be the first to share your thoughts about this crochet item!
+              </p>
+            ) : (
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                {reviews.map((rev) => (
+                  <div key={rev.id} className="bg-white border border-secondary/30 p-5 rounded-cozy space-y-2 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{rev.user_name || "Verified Customer"}</p>
+                        <div className="flex text-amber-500 mt-0.5">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star key={i} className={`w-3 h-3 ${i < rev.rating ? "fill-current" : "opacity-30"}`} />
+                          ))}
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-foreground/50">
+                        {new Date(rev.created_at).toLocaleDateString("en-IN", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric"
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground/80 leading-relaxed">{rev.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>

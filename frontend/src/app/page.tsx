@@ -56,7 +56,7 @@ export default function Home() {
               name: c.name,
               slug: c.slug,
               description: c.description,
-              price: c.slug === "bouquets" ? "From ₹499" : c.slug === "plushies" ? "From ₹349" : "From ₹149",
+              price: c.starting_price ? `Starting from ₹${Math.round(c.starting_price)}` : "Coming Soon",
               image: c.slug === "bouquets" 
                 ? "/images/category_bouquets.jpg" 
                 : c.slug === "plushies" 
@@ -153,8 +153,9 @@ export default function Home() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-10">
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-xs text-foreground/60 animate-pulse max-w-sm text-center">Connecting to the shop server (please wait up to 1 minute on first load while the cloud server boots)...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

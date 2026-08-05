@@ -28,7 +28,7 @@ async function request(endpoint: string, options: RequestInit = {}, multipart = 
   const headers = await getHeaders(multipart);
   
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
 
   const config = {
     ...options,
@@ -107,7 +107,7 @@ async function request(endpoint: string, options: RequestInit = {}, multipart = 
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === "AbortError") {
-      throw new Error("The database server appears to be starting up from cold standby. Please retry in a few seconds.");
+      throw new Error("The database server is waking up from standby. This can take up to a minute on first load. Please refresh in a moment.");
     }
     throw err;
   }
@@ -150,6 +150,8 @@ export const api = {
       fd.append("file", file);
       return request("/products/upload-image", { method: "POST", body: fd }, true);
     },
+    getReviews: (productId: string) => request(`/products/${productId}/reviews`),
+    addReview: (productId: string, payload: any) => request(`/products/${productId}/reviews`, { method: "POST", body: JSON.stringify(payload) }),
   },
 
   // Cart
@@ -205,6 +207,9 @@ export const api = {
     
     summarizeReviews: (productId: string) => 
       request(`/ai/summarize-reviews?product_id=${productId}`, { method: "POST" }),
+      
+    getChatHistory: () => request("/ai/chat/history"),
+    clearChatHistory: () => request("/ai/chat/history", { method: "DELETE" }),
       
     faq: (question: string) => {
       const formData = new FormData();
