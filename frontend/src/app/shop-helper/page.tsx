@@ -11,12 +11,16 @@ export default function ShopHelperPage() {
 
   // AI Chat States
   const [messages, setMessages] = useState<any[]>([
-    { role: "assistant", content: "Hi! I'm Kee, your AI Personal Shopper 🧶. Whether you're looking for a birthday bouquet, a desk friend, or a custom gift under budget, tell me who it's for, and I will recommend some ideas!" }
+    { role: "assistant", content: "Hi! I'm Kee, your AI Personal Shopper for Kee Crochet 🧶. All of our cozy, premium items are custom handcrafts prepared by the talented artisans at **DK Creations**! Tell me what you're looking for (like a gift or bouquet) and I will suggest some lovely ideas!" }
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [recommendedProducts, setRecommendedProducts] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Cart adding states for individual recommended products
+  const [cartLoadingMap, setCartLoadingMap] = useState<Record<string, boolean>>({});
+  const [cartSuccessMap, setCartSuccessMap] = useState<Record<string, boolean>>({});
 
   // AI Color Matcher States
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -27,6 +31,15 @@ export default function ShopHelperPage() {
   // Store Catalog reference for mapping recommendation IDs
   const [catalog, setCatalog] = useState<any[]>([]);
   const [error, setError] = useState("");
+
+  const suggestions = [
+    { label: "🧶 Show Catalog", text: "Show me the product catalog" },
+    { label: "🛍️ View Cart", text: "Go to my shopping cart" },
+    { label: "🚚 Shipping Policy", text: "What are the shipping charges and delivery time?" },
+    { label: "📦 My Orders", text: "Where can I see my order history?" },
+    { label: "🌻 Recommend Bouquets", text: "Can you recommend some crochet bouquets?" },
+    { label: "🧸 Cute Plushies", text: "I want to see some soft yarn plushies" }
+  ];
 
   useEffect(() => {
     // Scroll chat to bottom
@@ -72,7 +85,7 @@ export default function ShopHelperPage() {
         await api.ai.clearChatHistory();
       }
       setMessages([
-        { role: "assistant", content: "Hi! I'm Kee, your AI Personal Shopper 🧶. Whether you're looking for a birthday bouquet, a desk friend, or a custom gift under budget, tell me who it's for, and I will recommend some ideas!" }
+        { role: "assistant", content: "Hi! I'm Kee, your AI Personal Shopper for Kee Crochet 🧶. All of our cozy, premium items are custom handcrafts prepared by the talented artisans at **DK Creations**! Tell me what you're looking for (like a gift or bouquet) and I will suggest some lovely ideas!" }
       ]);
       setRecommendedProducts([]);
     } catch (err) {
@@ -118,6 +131,87 @@ export default function ShopHelperPage() {
       ]);
     }
     setChatLoading(false);
+  };
+
+  const handleAddRecommendedToCart = async (productId: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token) {
+      alert("Please sign in to add items to your shopping bag.");
+      window.location.href = "/dashboard?tab=auth";
+      return;
+    }
+
+    setCartLoadingMap((prev) => ({ ...prev, [productId]: true }));
+    try {
+      await api.cart.addItem({
+        product_id: productId,
+        variant_id: null,
+        quantity: 1,
+        gift_wrap: false,
+        note: null,
+      });
+
+      const count = parseInt(localStorage.getItem("cart_count") || "0", 10);
+      localStorage.setItem("cart_count", String(count + 1));
+      window.dispatchEvent(new Event("cart-updated"));
+
+      setCartSuccessMap((prev) => ({ ...prev, [productId]: true }));
+      setTimeout(() => {
+        setCartSuccessMap((prev) => ({ ...prev, [productId]: false }));
+      }, 3000);
+    } catch (err: any) {
+      console.error("Failed to add recommended product to cart:", err);
+      alert(err.message || "Failed to add item to shopping bag. Make sure you are signed in.");
+    } finally {
+      setCartLoadingMap((prev) => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  const renderMessageContent = (content: string) => {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.substring(lastIndex, match.index));
+      }
+      const linkText = match[1];
+      const linkUrl = match[2];
+      const isInternal = linkUrl.startsWith("/");
+
+      if (isInternal) {
+        parts.push(
+          <Link
+            key={match.index}
+            href={linkUrl}
+            className="text-primary font-bold underline hover:text-primary/80 transition-colors"
+          >
+            {linkText}
+          </Link>
+        );
+      } else {
+        parts.push(
+          <a
+            key={match.index}
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary font-bold underline hover:text-primary/80 transition-colors"
+          >
+            {linkText}
+          </a>
+        );
+      }
+      lastIndex = linkRegex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : content;
   };
 
   // Handle Image Selection
@@ -213,11 +307,11 @@ export default function ShopHelperPage() {
               </div>
 
               {/* Message History */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-transparent to-yarn-cream/5">
                 {messages.map((msg, index) => (
                   <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[75%] p-4 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-primary text-white rounded-br-none" : "bg-secondary/20 text-foreground rounded-bl-none border border-secondary/30"}`}>
-                      {msg.content}
+                    <div className={`max-w-[75%] p-4 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-primary text-white rounded-br-none" : "bg-secondary/20 text-foreground rounded-bl-none border border-secondary/30 shadow-sm"}`}>
+                      {msg.role === "user" ? msg.content : renderMessageContent(msg.content)}
                     </div>
                   </div>
                 ))}
@@ -233,6 +327,22 @@ export default function ShopHelperPage() {
                 )}
                 
                 <div ref={messagesEndRef} />
+              </div>
+
+              {/* Suggestion Chips */}
+              <div className="p-3 border-t border-secondary/20 flex flex-wrap gap-2 bg-yarn-cream/15 max-h-24 overflow-y-auto">
+                {suggestions.map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setChatInput(chip.text);
+                    }}
+                    className="text-xs bg-white hover:bg-secondary/15 border border-secondary/60 text-foreground/80 px-3 py-1.5 rounded-full transition font-semibold cursor-pointer shadow-sm active:scale-95"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
               </div>
 
               {/* Chat Input form */}
@@ -252,33 +362,50 @@ export default function ShopHelperPage() {
 
             {/* Recommendations Column */}
             <div className="space-y-6 lg:col-span-1">
-              <div className="bg-white p-6 rounded-cozy border border-secondary/50 h-full shadow-sm">
-                <h3 className="font-extrabold text-base text-foreground mb-6 flex items-center gap-1.5">
+              <div className="bg-white p-6 rounded-cozy border border-secondary/50 h-full shadow-sm flex flex-col">
+                <h3 className="font-extrabold text-base text-foreground mb-6 flex items-center gap-1.5 border-b border-secondary/20 pb-3">
                   <Sparkles className="w-5 h-5 text-primary" /> AI Recommendations
                 </h3>
                 
                 {recommendedProducts.length === 0 ? (
-                  <div className="h-[450px] border-2 border-dashed border-secondary/50 rounded-2xl flex flex-col items-center justify-center p-6 text-center text-foreground/50">
+                  <div className="flex-1 min-h-[350px] border-2 border-dashed border-secondary/50 rounded-2xl flex flex-col items-center justify-center p-6 text-center text-foreground/50">
                     <Sparkles className="w-8 h-8 mb-3 text-secondary animate-pulse" />
                     <p className="text-sm font-bold text-foreground/60">No Live Recommendations Yet</p>
                     <p className="text-xs text-foreground/45 mt-1 max-w-[200px]">Chat with Kee to receive custom matches on this panel.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                  <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1 flex-1">
                     {recommendedProducts.map((p) => (
-                      <div key={p.id} className="border border-secondary/50 p-4 rounded-xl flex space-x-4 bg-yarn-cream/10 hover:shadow-md transition">
-                        <img
-                          src={p.images?.[0] || "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=200"}
-                          alt={p.title}
-                          className="w-16 h-16 rounded-lg object-cover border border-secondary"
-                        />
-                        <div className="flex-1 space-y-1">
-                          <h4 className="font-bold text-sm text-foreground line-clamp-1">{p.title}</h4>
-                          <p className="text-sm font-black text-primary">₹{p.price}</p>
-                          <Link href={`/products/${p.slug}`} className="text-xs text-primary hover:underline font-bold inline-flex items-center gap-1 mt-1">
-                            Buy Now <ArrowRight className="w-3.5 h-3.5" />
-                          </Link>
+                      <div key={p.id} className="border border-secondary/50 p-4 rounded-xl flex flex-col space-y-3 bg-yarn-cream/10 hover:shadow-md transition">
+                        <div className="flex space-x-4">
+                          <img
+                            src={p.images?.[0] || "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=200"}
+                            alt={p.title}
+                            className="w-16 h-16 rounded-lg object-cover border border-secondary"
+                          />
+                          <div className="flex-1 space-y-1">
+                            <h4 className="font-bold text-sm text-foreground line-clamp-1">{p.title}</h4>
+                            <p className="text-sm font-black text-primary">₹{p.price}</p>
+                            <Link href={`/products/${p.slug}`} className="text-xs text-primary hover:underline font-bold inline-flex items-center gap-1 mt-1">
+                              View Details <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
                         </div>
+                        <button
+                          onClick={() => handleAddRecommendedToCart(p.id)}
+                          disabled={cartLoadingMap[p.id]}
+                          className="w-full bg-primary hover:bg-primary/95 text-white py-2 rounded-full text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm hover:shadow active:scale-95 disabled:opacity-50"
+                        >
+                          {cartLoadingMap[p.id] ? (
+                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          ) : cartSuccessMap[p.id] ? (
+                            "Added! ✓"
+                          ) : (
+                            <>
+                              <ShoppingCart className="w-3.5 h-3.5" /> Add to Shopping Bag
+                            </>
+                          )}
+                        </button>
                       </div>
                     ))}
                   </div>

@@ -95,22 +95,23 @@ async def chat_shopper(messages: list[dict], products_list: list[dict], customer
 
     # Catalog brief
     catalog_summary = json.dumps([
-        {"id": str(p["id"]), "title": p["title"], "price": float(p["price"]), "tags": p["tags"], "colors": p.get("colors", [])}
+        {"id": str(p["id"]), "title": p["title"], "price": float(p["price"]), "slug": p.get("slug", ""), "tags": p["tags"], "colors": p.get("colors", [])}
         for p in products_list
     ], default=str)
 
     if not model:
+        import random
         # Smart Dynamic Mock Shopper
-        last_message = messages[-1]["content"].lower()
+        last_message = messages[-1]["content"].lower().strip()
         
         # 1. Parse colors
         colors = ["orange", "pink", "blue", "green", "red", "yellow", "purple", "lavender", "white", "black", "cream", "beige"]
         matched_colors = [c for c in colors if c in last_message]
         
         # 2. Parse product types
-        wants_bouquet = "bouquet" in last_message or "flower" in last_message or "rose" in last_message or "tulip" in last_message or "sunflower" in last_message
-        wants_plush = "plush" in last_message or "plushie" in last_message or "doll" in last_message or "toy" in last_message
-        wants_keychain = "keychain" in last_message or "accessory" in last_message or "bag charm" in last_message
+        wants_bouquet = any(x in last_message for x in ["bouquet", "flower", "rose", "tulip", "sunflower"])
+        wants_plush = any(x in last_message for x in ["plush", "plushie", "doll", "toy", "stuffed", "octopus", "whale", "bear"])
+        wants_keychain = any(x in last_message for x in ["keychain", "accessory", "bag charm", "key ring"])
         
         # 3. Parse recipient
         recipient = None
@@ -118,8 +119,22 @@ async def chat_shopper(messages: list[dict], products_list: list[dict], customer
             if r in last_message:
                 recipient = r
                 break
+                
+        # 4. Check for greetings
+        is_greeting = any(x in last_message for x in ["hi", "hello", "hey", "hola", "greetings", "good morning", "good evening", "yo"])
+        
+        # 5. Check for navigation intents
+        wants_cart = any(x in last_message for x in ["cart", "bag", "checkout", "basket", "my cart", "my bag", "go to cart", "purchase", "pay"])
+        wants_dashboard = any(x in last_message for x in ["dashboard", "orders", "history", "my orders", "profile", "account", "status"])
+        wants_catalog = any(x in last_message for x in ["catalog", "shop", "browse", "products", "items", "all products", "collection", "see all"])
+        
+        # 6. Check for FAQ intents
+        wants_shipping = any(x in last_message for x in ["shipping", "delivery", "ship", "deliver", "charges", "cost", "how long", "pune", "india"])
+        wants_refund = any(x in last_message for x in ["refund", "return", "cancel", "replace", "damage", "broken"])
+        wants_wash = any(x in last_message for x in ["wash", "clean", "care", "washable", "maintenance", "dirty"])
+        wants_custom = any(x in last_message for x in ["custom", "personalize", "request", "color choice"])
 
-        # Let's dynamically recommend products matching colors or types
+        # Compile recommendations matching query
         recs = []
         for p in products_list:
             p_title_lower = p["title"].lower()
@@ -137,50 +152,115 @@ async def chat_shopper(messages: list[dict], products_list: list[dict], customer
                 score += 2
                 
             if score > 0:
-                recs.append((score, str(p["id"]), p["title"]))
+                recs.append((score, str(p["id"]), p["title"], p.get("slug", "")))
                 
-        # Sort recommendations by match score
         recs.sort(key=lambda x: x[0], reverse=True)
         recommended_ids = [r[1] for r in recs]
         recommended_titles = [r[2] for r in recs]
+        recommended_slugs = [r[3] for r in recs]
         
-        # Fallback if no specific matches found
+        # Fallbacks
         if not recommended_ids:
             recommended_ids = [str(p["id"]) for p in products_list[:3]]
             recommended_titles = [p["title"] for p in products_list[:3]]
-            
-        # Build a warm, customized mock reply based on parsed variables
-        if matched_colors or wants_bouquet or wants_plush or wants_keychain or recipient:
+            recommended_slugs = [p.get("slug", "") for p in products_list[:3]]
+
+        # Build personalized responses
+        reply = ""
+        
+        # Scenario: Navigating to cart
+        if wants_cart:
+            reply = random.choice([
+                "Sure thing! You can view and edit the items you've selected in your [Shopping Cart](/cart) to complete your order.",
+                "Your bag is waiting for you! Open your [Shopping Cart](/cart) to review your selections or checkout.",
+                "Let's check out your bag! Click here to navigate to your [Shopping Cart](/cart) whenever you're ready."
+            ])
+        # Scenario: Navigating to dashboard
+        elif wants_dashboard:
+            reply = random.choice([
+                "Certainly! You can track your orders, view past history, and manage details in your [Account Dashboard](/dashboard). Make sure you are signed in!",
+                "Check out all your order updates and personal profile directly in your [Customer Dashboard](/dashboard).",
+                "I've got your files! You can manage your account and view previous purchases in your [Account Dashboard](/dashboard)."
+            ])
+        # Scenario: Navigating to catalog
+        elif wants_catalog:
+            reply = random.choice([
+                "Feel free to explore our entire collection of hand-stitched items in our [Shop Catalog](/products)!",
+                "Have a look at all our premium crochet designs over in the [Product Catalog](/products). Happy shopping!",
+                "Let's look at what we have! You can browse all plushies, bouquets, and accessories on our [Shop Catalog](/products) page."
+            ])
+        # Scenario: Shipping policy
+        elif wants_shipping:
+            reply = random.choice([
+                "We deliver across India! Ready-to-ship items are dispatched in 1-2 days, while custom orders take 4-7 days to hand-craft. Shipping is flat ₹60, or **free** for orders over ₹999.",
+                "Standard shipping takes 3-5 days after dispatch. Ready products ship in 1-2 days, and custom requests take 4-7 days. Flat shipping is ₹60 (free above ₹999)!",
+                "All items are handcrafted and sent nationwide. Ready items take 1-2 days to ship; custom work takes 4-7 days. Shipping is ₹60, and free for orders above ₹999!"
+            ])
+        # Scenario: Refund policy
+        elif wants_refund:
+            reply = random.choice([
+                "Since all products are handmade, we do not accept returns. However, if a product is damaged during transit, we offer refunds or replacements upon showing an unboxing video.",
+                "Because each piece is custom-made, we cannot accept returns. If your item gets damaged in transit, send us a quick unboxing video and we'll gladly replace it or issue a refund!",
+                "We package everything securely, but if your item arrives damaged, we offer a refund or replacement. Just make sure to record an unboxing video as proof!"
+            ])
+        # Scenario: Wash instruction
+        elif wants_wash:
+            reply = random.choice([
+                "Our items are crafted using premium cotton/acrylic blends. We recommend gently hand-washing them with cool water and mild detergent, then laying flat to dry.",
+                "To keep your crochet items soft and clean, hand-wash them with a gentle soap, and let them dry flat. Avoid machine wash or wringing to keep their shape!",
+                "Hand-washing is best! Gently squeeze out excess water, shape, and lay flat on a towel. They'll stay snuggly and beautiful!"
+            ])
+        # Scenario: Custom orders
+        elif wants_custom:
+            reply = random.choice([
+                "We love custom requests! You can add special color requests or instructions in the notes when adding to cart, or suggest room colors in the [Aesthetics Matcher](/shop-helper) tab.",
+                "Custom orders are our specialty! You can type in your requests, choose custom colors, and we'll take 4-7 days to handcraft them just for you."
+            ])
+        # Scenario: Greetings / Help
+        elif is_greeting or any(x in last_message for x in ["help", "navigate", "services", "what can you do"]):
+            reply = random.choice([
+                "Hi! I'm Kee 🧶, your AI Personal Shopper for Kee Crochet. All of our custom items are beautiful handcrafts prepared by **DK Creations**! I can suggest plushies, bouquets, explain policies, or help you navigate. Feel free to explore the [Shop Catalog](/products) or check your [Shopping Cart](/cart]!",
+                "Hello there! Welcome to Kee Crochet ✨. I'm here to guide you. All our products are handcrafts lovingly prepared by **DK Creations**. You can browse our [Product Catalog](/products), manage your [Cart](/cart), or check orders in your [Dashboard](/dashboard). How can I assist you today?",
+                "Greetings! I am Kee, your personal shopper helper. All our items are unique handcrafts prepared by the talented artisans at **DK Creations**. Ask me for recommendations, shipping policies, or navigate to our [Shop Catalog](/products) to get started!"
+            ])
+        # Scenario: Product keyword matched
+        elif matched_colors or wants_bouquet or wants_plush or wants_keychain or recipient:
             reply_parts = []
             if recipient:
-                reply_parts.append(f"That is so sweet! A handmade crochet item makes a wonderful gift for your {recipient}.")
+                reply_parts.append(f"That's so sweet! A hand-stitched crochet item prepared by **DK Creations** makes a truly special gift for your {recipient}.")
             
             if matched_colors:
                 color_str = " and ".join(matched_colors)
-                reply_parts.append(f"Since they love {color_str}, I highly recommend picking a handcrafted piece matching those colors.")
+                reply_parts.append(f"Since they love {color_str}, I recommend choosing colors that match their favorite hues.")
             
             if wants_bouquet:
-                reply_parts.append("Our everlasting crochet flower bouquets (especially tulips and sunflowers) are perfect for bringing warmth and smiles.")
+                reply_parts.append("Our everlasting crochet flower bouquets (especially our sunflowers and tulips) are perfect for bringing warmth and smiles that never fade.")
             elif wants_plush:
-                reply_parts.append("Our soft yarn plushies are super squishy and make the cutest desk or bedside companions.")
+                reply_parts.append("Our squishy yarn plushies make the absolute cutest companions for desks or shelves.")
             elif wants_keychain:
-                reply_parts.append("Our mini keychains are great bag charms and daily reminders of your thoughtful gift.")
+                reply_parts.append("Our mini keychains are great bag charms and perfect little daily reminders.")
                 
             if recommended_titles:
-                titles_str = ", ".join(recommended_titles[:2])
-                reply_parts.append(f"I've selected some lovely choices for you, such as the {titles_str}.")
+                # Add links to recommended products in the message
+                links_str = " and ".join([f"[{title}](/products/{slug})" for title, slug in zip(recommended_titles[:2], recommended_slugs[:2])])
+                reply_parts.append(f"I've selected some lovely choices for you, such as the {links_str}. You can click 'Add to Cart' directly on the side panel to add them to your bag!")
             else:
-                reply_parts.append("Feel free to browse our main catalog for more inspiration!")
+                reply_parts.append("Feel free to browse our main [Shop Catalog](/products) for more inspiration!")
                 
             reply = " ".join(reply_parts)
         else:
-            reply = "I'd love to help you find the perfect crochet gift! We offer high-quality, handmade crochet keychains, plushies, and custom bouquets. Can you tell me a bit about who this is for and their favorite colors?"
-            
+            # General fallback helper
+            reply = random.choice([
+                "I'd love to help you find the perfect crochet piece! We offer high-quality, handmade crochet keychains, plushies, and custom bouquets prepared by **DK Creations**. Can you tell me who this is for or what colors they like? You can also check our [Shop Catalog](/products)!",
+                "Looking for a cozy handmade gift from **DK Creations**? 🧶 Tell me a bit about what you have in mind (e.g. 'a cute plushie for my sister' or 'sunflowers under ₹500'), or browse all options on the [Product Catalog](/products)!"
+            ])
+
         return reply, recommended_ids[:3]
 
     prompt = f"""
     You are 'Kee', a warm, helpful, and charming AI Personal Shopper for 'Kee Crochet', a premium handmade crochet store.
-    You assist customers in finding the right products, customizing orders, and suggesting gifts.
+    All products in our store are handcrafts prepared by 'DK Creations'. Make sure to mention 'DK Creations' when explaining craftsmanship or welcoming the user.
+    You assist customers in finding the right products, customizing orders, suggesting gifts, and navigating the store.
     
     {customer_context}
     
@@ -191,6 +271,17 @@ async def chat_shopper(messages: list[dict], products_list: list[dict], customer
     {chat_history}
     
     Respond to the user with a friendly, helpful reply. Address them by name if provided in their profile above, and reference their cart/purchase history if relevant (e.g. 'Since you liked the lavender bouquet from your past order...').
+    
+    YOU CAN HELP CUSTOMERS NAVIGATE AND ACCESS SERVICES:
+    - If the customer wants to check out, view their bag, buy, or look at items in cart, provide a markdown link to [Shopping Cart](/cart).
+    - If the customer wants to check their orders, check order status, history, or manage their account, provide a markdown link to [Account Dashboard](/dashboard).
+    - If the customer wants to browse the shop or see all items, provide a markdown link to [Shop Catalog](/products).
+    - If you are recommending a specific product, always include a markdown link in the format [Product Title](/products/product-slug) where product-slug is its slug from the catalog.
+    
+    Remind the user that they can click the "Add to Cart" button directly on the recommended products panel on the right side of the screen to quickly purchase suggested items.
+    
+    Keep your tone warm, enthusiastic, and highly conversational. Vary your greetings, use cute crochet analogies (like "weaving some recommendations", "stitching together some ideas"), and do not repeat the exact same templates.
+    
     Also, identify up to 3 product IDs from the catalog that fit their current search or request.
     
     Your response must be in JSON format with exactly two keys: "reply" (string) and "recommended_product_ids" (list of strings).
