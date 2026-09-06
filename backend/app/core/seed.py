@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 async def seed_data(db: AsyncSession) -> None:
     """Auto-seed default categories, products, coupons, and policies if empty."""
     is_prod = settings.ENVIRONMENT == "production"
-    if is_prod:
-        logger.info("Production environment detected. Skipping automatic demo data seeding.")
-        return
-
     logger.info("Checking if database seeding is required...")
 
     admin_email = os.getenv("ADMIN_EMAIL", "admin@keecrochet.com")
@@ -28,39 +24,42 @@ async def seed_data(db: AsyncSession) -> None:
     customer_email = os.getenv("CUSTOMER_EMAIL", "customer@keecrochet.com")
     customer_pass = os.getenv("CUSTOMER_PASSWORD", "customerpassword123")
 
-    # 1. Seed Users (Development only)
-    user_result = await db.execute(select(User))
-    users = user_result.scalars().all()
-    if not users:
-        logger.info("No users found. Seeding default admin and customer accounts...")
-        admin = User(
-            email=admin_email,
-            full_name="Kee Admin",
-            hashed_password=hash_password(admin_pass),
-            role=UserRole.admin,
-            auth_provider=AuthProvider.email,
-            is_active=True,
-            is_verified=True,
-        )
-        customer = User(
-            email=customer_email,
-            full_name="Madhav Nair",
-            hashed_password=hash_password(customer_pass),
-            role=UserRole.customer,
-            auth_provider=AuthProvider.email,
-            is_active=True,
-            is_verified=True,
-        )
-        db.add(admin)
-        db.add(customer)
-        await db.flush()
+    # 1. Seed Users (Non-production development only)
+    if not is_prod:
+        user_result = await db.execute(select(User))
+        users = user_result.scalars().all()
+        if not users:
+            logger.info("No users found. Seeding default admin and customer accounts...")
+            admin = User(
+                email=admin_email,
+                full_name="Kee Admin",
+                hashed_password=hash_password(admin_pass),
+                role=UserRole.admin,
+                auth_provider=AuthProvider.email,
+                is_active=True,
+                is_verified=True,
+            )
+            customer = User(
+                email=customer_email,
+                full_name="Madhav Nair",
+                hashed_password=hash_password(customer_pass),
+                role=UserRole.customer,
+                auth_provider=AuthProvider.email,
+                is_active=True,
+                is_verified=True,
+            )
+            db.add(admin)
+            db.add(customer)
+            await db.flush()
 
-        # Add carts for seeded users
-        db.add(Cart(user_id=admin.id))
-        db.add(Cart(user_id=customer.id))
-        logger.info("Admin & Customer users seeded successfully.")
+            # Add carts for seeded users
+            db.add(Cart(user_id=admin.id))
+            db.add(Cart(user_id=customer.id))
+            logger.info("Admin & Customer users seeded successfully.")
+        else:
+            logger.info("Users exist. Skipping user seeding.")
     else:
-        logger.info("Users exist. Skipping user seeding.")
+        logger.info("Production environment: Skipping default user account seeding.")
 
     # 2. Seed Categories
     category_result = await db.execute(select(Category))

@@ -3,7 +3,8 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -30,18 +31,24 @@ async def lifespan(app: FastAPI):
     # Validate production configuration fail-fast
     settings.validate_production_configuration()
 
-    if settings.ENVIRONMENT != "production":
-        # In non-production, ensure tables are available and seed initial development data
-        logger.info("Non-production environment: Checking database seeding...")
-        from app.core.seed import seed_data
-        from app.core.database import async_session
-        async with async_session() as session:
-            try:
-                await seed_data(session)
-            except Exception as e:
-                logger.error(f"Failed to seed development database: {e}")
-    else:
-        logger.info("Production environment: Schema is strictly managed by Alembic migrations. Auto-seeding disabled.")
+    # Ensure database schema is created/verified regardless of deployment platform
+    try:
+        from app.core.database import Base
+        import app.models  # Ensures all models are registered
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database schema tables verified/created successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database tables: {e}")
+
+    # Seed initial categories, products, coupons, and policies if empty
+    from app.core.seed import seed_data
+    from app.core.database import async_session
+    async with async_session() as session:
+        try:
+            await seed_data(session)
+        except Exception as e:
+            logger.error(f"Failed to seed database: {e}")
 
     yield
     logger.info("Shutting down database connection...")
@@ -81,7 +88,7 @@ async def security_and_request_id_middleware(request: Request, call_next):
 
 # CORS configuration: strict explicit origins in production, preview regex only in dev
 allowed_origins = settings.get_allowed_origins()
-origin_regex = None if is_prod else r"https://.*\.vercel\.app"
+origin_regex = r"https://.*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
@@ -103,6 +110,24 @@ app.add_middleware(
 # Mount Static Files for product image uploads (fallback in dev/local)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Ensure unhandled errors retain CORS headers so browsers receive meaningful errors instead of generic fetch failures."""
+    logger.error(f"Unhandled server error on {request.method} {request.url.path}: {exc}", exc_info=True)
+    origin = request.headers.get("origin") or "*"
+    error_detail = str(exc) if settings.ENVIRONMENT != "production" else "Internal server error occurred."
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": error_detail, "error_type": type(exc).__name__},
+    )
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    return response
+
+
 # Register API Routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
@@ -112,13 +137,40 @@ app.include_router(ai.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 
+@app.get("/api/diagnostic")
+async def diagnostic(request: Request):
+    """Quick diagnostic endpoint verifying database connectivity and catalog count."""
+    from app.models.product import Product, Category
+    from sqlalchemy import select, func
+    from app.core.database import async_session
+
+    db_info = {"status": "connected", "categories": 0, "products": 0, "error": None}
+    try:
+        async with async_session() as session:
+            cat_count = await session.scalar(select(func.count(Category.id)))
+            prod_count = await session.scalar(select(func.count(Product.id)))
+            db_info["categories"] = cat_count or 0
+            db_info["products"] = prod_count or 0
+    except Exception as e:
+        db_info["status"] = "error"
+        db_info["error"] = str(e)
+
+    return {
+        "status": "online",
+        "version": "2.0.1",
+        "environment": settings.ENVIRONMENT,
+        "database": db_info,
+        "cors_origin_received": request.headers.get("origin"),
+    }
+
+
 @app.get("/")
 async def root():
     return {
         "status": "healthy",
         "app_name": settings.PROJECT_NAME,
         "environment": settings.ENVIRONMENT,
-        "version": "2.0.0",
+        "version": "2.0.1",
     }
 
 

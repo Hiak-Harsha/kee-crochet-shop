@@ -65,7 +65,11 @@ class Settings(BaseSettings):
     )
 
     def get_allowed_origins(self) -> list[str]:
-        origins = ["http://localhost:3000", "http://localhost:3001"]
+        origins = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://kee-crochet-shop.vercel.app",
+        ]
         if self.FRONTEND_URL:
             origins.append(self.FRONTEND_URL.rstrip("/"))
         if self.ALLOWED_ORIGINS:
