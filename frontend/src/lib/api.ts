@@ -370,7 +370,8 @@ export const api = {
       if (params.min_price !== undefined) query.append("min_price", String(params.min_price));
       if (params.max_price !== undefined) query.append("max_price", String(params.max_price));
       if (params.featured !== undefined) query.append("featured", String(params.featured));
-      return request<Product[]>(`/products?${query.toString()}`);
+      const qs = query.toString();
+      return request<Product[]>(qs ? `/products?${qs}` : "/products");
     },
     get: (slug: string) => request<Product>(`/products/${slug}`),
     create: (payload: any) => request<Product>("/products", { method: "POST", body: JSON.stringify(payload) }),

@@ -5,6 +5,8 @@ from sqlalchemy import ForeignKey, Integer, Numeric, String, Text, DateTime, fun
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+import app.models.user  # noqa: F401
+import app.models.order  # noqa: F401
 
 
 class Category(Base):
