@@ -56,11 +56,21 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str | None = os.getenv("TWILIO_AUTH_TOKEN", None)
     TWILIO_FROM_NUMBER: str | None = os.getenv("TWILIO_FROM_NUMBER", None)
     
+    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    def get_allowed_origins(self) -> list[str]:
+        origins = ["http://localhost:3000", "http://localhost:3001"]
+        if self.FRONTEND_URL:
+            origins.append(self.FRONTEND_URL.rstrip("/"))
+        if self.ALLOWED_ORIGINS:
+            origins.extend([o.strip().rstrip("/") for o in self.ALLOWED_ORIGINS.split(",") if o.strip()])
+        return list(dict.fromkeys(origins))
 
     def validate_production_configuration(self) -> None:
         """Fail fast at startup if required configuration is missing in production."""
@@ -80,8 +90,15 @@ class Settings(BaseSettings):
         if not self.RAZORPAY_KEY_ID or not self.RAZORPAY_KEY_SECRET:
             missing.append("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be configured for real payment processing.")
             
-        if self.STORAGE_PROVIDER == "local":
+        provider = self.STORAGE_PROVIDER.lower()
+        if provider == "local":
             missing.append("STORAGE_PROVIDER must be configured with object storage ('cloudinary', 's3', or 'r2') in production.")
+        elif provider == "cloudinary":
+            if not self.CLOUDINARY_CLOUD_NAME or not self.CLOUDINARY_API_KEY or not self.CLOUDINARY_API_SECRET:
+                missing.append("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be set for Cloudinary.")
+        elif provider in ("s3", "r2"):
+            if not self.AWS_ACCESS_KEY_ID or not self.AWS_SECRET_ACCESS_KEY or not self.AWS_S3_BUCKET:
+                missing.append("AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_S3_BUCKET must be set for S3/R2 storage.")
             
         if missing:
             raise RuntimeError(

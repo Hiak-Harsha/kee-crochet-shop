@@ -1,8 +1,6 @@
-"use client";
-
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search } from "lucide-react";
-import { Order } from "@/lib/api";
+import { Order, api } from "@/lib/api";
 
 interface CustomerDirectoryProps {
   orders: Order[];
@@ -21,8 +19,32 @@ interface CustomerRecord {
 
 export default function CustomerDirectory({ orders }: CustomerDirectoryProps) {
   const [search, setSearch] = useState("");
+  const [serverCustomers, setServerCustomers] = useState<CustomerRecord[] | null>(null);
 
-  const customers: CustomerRecord[] = useMemo(() => {
+  useEffect(() => {
+    let active = true;
+    api.admin.getCustomers(search)
+      .then((data) => {
+        if (!active || !Array.isArray(data)) return;
+        const mapped: CustomerRecord[] = data.map((d: any) => ({
+          id: d.id,
+          name: d.full_name || "Customer",
+          phone: d.phone || "—",
+          city: "—",
+          state: "—",
+          totalOrders: d.total_orders || 0,
+          totalSpend: d.total_spend || 0,
+          lastOrderDate: d.last_order_date || d.account_date || "—",
+        }));
+        setServerCustomers(mapped);
+      })
+      .catch(() => {
+        // Graceful fallback to client orders
+      });
+    return () => { active = false; };
+  }, [search]);
+
+  const fallbackCustomers: CustomerRecord[] = useMemo(() => {
     const map = new Map<string, CustomerRecord>();
 
     for (const order of orders) {
@@ -52,7 +74,9 @@ export default function CustomerDirectory({ orders }: CustomerDirectoryProps) {
     return Array.from(map.values()).sort((a, b) => b.totalSpend - a.totalSpend);
   }, [orders]);
 
-  const filtered = customers.filter(
+  const displayCustomers = serverCustomers !== null ? serverCustomers : fallbackCustomers;
+
+  const filtered = displayCustomers.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||

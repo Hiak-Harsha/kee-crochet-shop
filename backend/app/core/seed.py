@@ -233,5 +233,40 @@ async def seed_data(db: AsyncSession) -> None:
             db.add(pol)
         logger.info("Store policies seeded successfully.")
 
+    # 6. Seed Default Store Settings
+    from app.models.user import StoreSetting
+    setting_result = await db.execute(select(StoreSetting))
+    settings_records = setting_result.scalars().all()
+    if not settings_records:
+        logger.info("Seeding default store settings...")
+        default_settings = [
+            StoreSetting(
+                key="shipping",
+                value={
+                    "standard_fee": 79.0,
+                    "free_threshold": 999.0,
+                    "gift_wrap_unit_fee": 50.0,
+                    "processing_days": "1-2 business days",
+                    "delivery_estimate": "3-5 business days",
+                    "supported_countries": ["IN"],
+                },
+                description="General shipping fee rules and delivery timelines",
+            ),
+            StoreSetting(
+                key="general",
+                value={
+                    "store_name": "Kee Crochet Shop",
+                    "support_email": "support@keecrochet.com",
+                    "instagram_handle": "@kee.crochet",
+                    "currency": "INR",
+                    "currency_symbol": "₹",
+                },
+                description="Core store branding and support channels",
+            )
+        ]
+        for st in default_settings:
+            db.add(st)
+        logger.info("Store settings seeded successfully.")
+
     await db.commit()
     logger.info("Seeding process completed successfully.")

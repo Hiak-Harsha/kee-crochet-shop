@@ -88,13 +88,34 @@ class PricingService:
                 gift_wrap_count += item.quantity
 
         subtotal = cls._quantize(subtotal)
-        gift_wrap_fee = cls._quantize(GIFT_WRAP_UNIT_FEE * Decimal(str(gift_wrap_count)))
+        
+        # Dynamic Store Settings lookup with graceful defaults
+        gift_unit_fee = GIFT_WRAP_UNIT_FEE
+        free_threshold = FREE_SHIPPING_THRESHOLD
+        standard_fee = STANDARD_SHIPPING_FEE
+
+        if db:
+            try:
+                from app.models.user import StoreSetting
+                st_res = await db.execute(select(StoreSetting).where(StoreSetting.key == "shipping"))
+                st_rec = st_res.scalar_one_or_none()
+                if st_rec and isinstance(st_rec.value, dict):
+                    if "gift_wrap_unit_fee" in st_rec.value:
+                        gift_unit_fee = Decimal(str(st_rec.value["gift_wrap_unit_fee"]))
+                    if "free_threshold" in st_rec.value:
+                        free_threshold = Decimal(str(st_rec.value["free_threshold"]))
+                    if "standard_fee" in st_rec.value:
+                        standard_fee = Decimal(str(st_rec.value["standard_fee"]))
+            except Exception as e:
+                logger.warning(f"Could not load store settings, using defaults: {e}")
+
+        gift_wrap_fee = cls._quantize(gift_unit_fee * Decimal(str(gift_wrap_count)))
         
         # Shipping Calculation
-        if subtotal >= FREE_SHIPPING_THRESHOLD or subtotal == Decimal("0.00"):
+        if subtotal >= free_threshold or subtotal == Decimal("0.00"):
             shipping_fee = Decimal("0.00")
         else:
-            shipping_fee = STANDARD_SHIPPING_FEE
+            shipping_fee = standard_fee
 
         item_discounts = Decimal("0.00")
         coupon_discount = Decimal("0.00")

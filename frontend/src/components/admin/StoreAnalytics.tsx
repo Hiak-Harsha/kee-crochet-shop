@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Award } from "lucide-react";
-import { Order } from "@/lib/api";
+import { Order, api } from "@/lib/api";
 
 interface StoreAnalyticsProps {
   orders: Order[];
@@ -13,13 +13,35 @@ interface StoreAnalyticsProps {
   };
 }
 
+interface ProductStat {
+  title: string;
+  count: number;
+  revenue: number;
+}
+
 export default function StoreAnalytics({
   orders,
   stats,
 }: StoreAnalyticsProps) {
+  const [serverAnalytics, setServerAnalytics] = useState<any | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.admin.getAnalytics()
+      .then((data) => {
+        if (active && data) {
+          setServerAnalytics(data);
+        }
+      })
+      .catch(() => {
+        // Fallback to client calculations
+      });
+    return () => { active = false; };
+  }, []);
+
   // Compute top performing products
-  const topProducts = useMemo(() => {
-    const productStats = new Map<string, { title: string; count: number; revenue: number }>();
+  const fallbackTopProducts: ProductStat[] = useMemo(() => {
+    const productStats = new Map<string, ProductStat>();
 
     for (const order of orders) {
       if (order.status === "cancelled" || order.status === "refunded") continue;
@@ -43,6 +65,14 @@ export default function StoreAnalytics({
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
   }, [orders]);
+
+  const topProducts: ProductStat[] = serverAnalytics?.top_products?.length
+    ? serverAnalytics.top_products.map((p: any) => ({
+        title: p.title,
+        count: p.units_sold,
+        revenue: p.revenue,
+      }))
+    : fallbackTopProducts;
 
   // Adoption statistics
   const giftWrapOrders = orders.filter((o) => o.gift_wrap_fee > 0).length;

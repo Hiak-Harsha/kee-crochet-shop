@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import engine
 from app.core.rate_limiter import RateLimitingMiddleware
-from app.api.routes import auth, products, cart, orders, ai
+from app.api.routes import auth, products, cart, orders, ai, admin
 
 # Setup logging
 logging.basicConfig(
@@ -79,23 +79,14 @@ async def security_and_request_id_middleware(request: Request, call_next):
     return response
 
 
-# CORS configuration
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://kee-crochet-shop.vercel.app",
-]
-
-frontend_url = settings.FRONTEND_URL
-if frontend_url:
-    origins.append(frontend_url)
-    if frontend_url.endswith("/"):
-        origins.append(frontend_url[:-1])
+# CORS configuration: strict explicit origins in production, preview regex only in dev
+allowed_origins = settings.get_allowed_origins()
+origin_regex = None if is_prod else r"https://.*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=allowed_origins,
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -118,6 +109,7 @@ app.include_router(products.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/")
@@ -134,5 +126,39 @@ async def root():
 async def health_check():
     return {
         "status": "ok",
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+@app.get("/health/live")
+async def health_live():
+    """Liveness probe to check if the HTTP service process is running."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe verifying operational status of essential backing dependencies (DB)."""
+    from sqlalchemy import text
+    from app.core.database import async_session
+
+    db_healthy = False
+    try:
+        async with async_session() as session:
+            res = await session.execute(text("SELECT 1"))
+            if res.scalar() == 1:
+                db_healthy = True
+    except Exception as e:
+        logger.error(f"Health check DB probe failure: {e}")
+
+    if not db_healthy:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unready", "database": "disconnected"}
+        )
+
+    return {
+        "status": "ready",
+        "database": "connected",
         "environment": settings.ENVIRONMENT,
     }

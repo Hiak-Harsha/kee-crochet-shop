@@ -90,15 +90,195 @@ class ShoppingAgent:
 
             elif tool_name == "get_shipping_estimate":
                 pin = str(arguments.get("postal_code", "")).strip()
-                # All Indian pin codes are 6 digits
+                # Indian PIN codes must be 6 digits
                 if len(pin) == 6 and pin.isdigit():
+                    std_fee = 60.00
+                    free_thresh = 999.00
+                    del_days = "3-5 business days"
+                    try:
+                        from app.models.user import StoreSetting
+                        st_res = await db.execute(select(StoreSetting).where(StoreSetting.key == "shipping"))
+                        st_rec = st_res.scalar_one_or_none()
+                        if st_rec and isinstance(st_rec.value, dict):
+                            std_fee = float(st_rec.value.get("standard_fee", std_fee))
+                            free_thresh = float(st_rec.value.get("free_threshold", free_thresh))
+                            del_days = str(st_rec.value.get("delivery_estimate", del_days))
+                    except Exception:
+                        pass
+
                     return {
                         "eligible": True,
-                        "standard_shipping_fee": 60.00,
-                        "free_shipping_threshold": 999.00,
-                        "estimated_delivery_days": "3-5 business days",
+                        "standard_shipping_fee": std_fee,
+                        "free_shipping_threshold": free_thresh,
+                        "estimated_delivery_days": del_days,
                     }
                 return {"error": "Please provide a valid 6-digit PIN code for shipping estimate."}
+
+            elif tool_name == "get_cart":
+                if not cart:
+                    return {"items": [], "subtotal": 0.0, "total": 0.0, "item_count": 0}
+                
+                # Query CartItem records directly with eager loading
+                stmt = select(CartItem).options(
+                    selectinload(CartItem.product),
+                    selectinload(CartItem.variant),
+                ).where(CartItem.cart_id == cart.id)
+                res = await db.execute(stmt)
+                cart_items = res.scalars().all()
+
+                from app.services.pricing_service import PricingService
+                breakdown = await PricingService.calculate_cart_totals(cart_items, user=user, db=db)
+                return {
+                    "items": [
+                        {
+                            "id": str(it.id),
+                            "product_title": it.product.title if it.product else "Unknown",
+                            "variant_name": it.variant.value if it.variant else None,
+                            "quantity": it.quantity,
+                            "gift_wrap": it.gift_wrap,
+                        }
+                        for it in cart_items
+                    ],
+                    "subtotal": float(breakdown.subtotal),
+                    "shipping_fee": float(breakdown.shipping_fee),
+                    "gift_wrap_fee": float(breakdown.gift_wrap_fee),
+                    "total": float(breakdown.total),
+                    "item_count": sum(it.quantity for it in cart_items),
+                }
+
+            elif tool_name == "add_to_cart":
+                if not cart:
+                    return {"error": "Active cart session is required to add items."}
+
+                product_id_str = arguments.get("product_id")
+                if not product_id_str:
+                    return {"error": "product_id is required."}
+
+                try:
+                    prod_uuid = uuid.UUID(product_id_str)
+                except Exception:
+                    return {"error": f"Invalid product_id: '{product_id_str}'"}
+
+                # Check product
+                p_res = await db.execute(
+                    select(Product).options(selectinload(Product.variants)).where(Product.id == prod_uuid)
+                )
+                product = p_res.scalar_one_or_none()
+                if not product or not product.is_active:
+                    return {"error": "Product is unavailable or inactive."}
+
+                qty = max(1, min(int(arguments.get("quantity", 1)), 10))
+                variant_uuid = None
+                variant_id_str = arguments.get("variant_id")
+                if variant_id_str:
+                    try:
+                        variant_uuid = uuid.UUID(variant_id_str)
+                        variant = next((v for v in product.variants if v.id == variant_uuid), None)
+                        if not variant or not variant.is_active:
+                            return {"error": "Selected variant is unavailable or inactive."}
+                        if variant.stock < qty:
+                            return {"error": f"Insufficient stock for variant '{variant.value}'. Available: {variant.stock}."}
+                    except Exception:
+                        return {"error": f"Invalid variant_id: '{variant_id_str}'"}
+                else:
+                    if product.stock < qty:
+                        return {"error": f"Insufficient stock for '{product.title}'. Available: {product.stock}."}
+
+                # Check if item exists in cart
+                gift_wrap = bool(arguments.get("gift_wrap", False))
+                note = arguments.get("note")
+
+                existing_item_stmt = select(CartItem).where(
+                    CartItem.cart_id == cart.id,
+                    CartItem.product_id == prod_uuid,
+                    CartItem.variant_id == variant_uuid,
+                )
+                ex_res = await db.execute(existing_item_stmt)
+                existing_item = ex_res.scalar_one_or_none()
+
+                if existing_item:
+                    existing_item.quantity += qty
+                    if gift_wrap:
+                        existing_item.gift_wrap = True
+                    if note:
+                        existing_item.note = note
+                else:
+                    new_item = CartItem(
+                        cart_id=cart.id,
+                        product_id=prod_uuid,
+                        variant_id=variant_uuid,
+                        quantity=qty,
+                        gift_wrap=gift_wrap,
+                        note=note,
+                    )
+                    db.add(new_item)
+
+                await db.commit()
+                return {
+                    "success": True,
+                    "message": f"Added {qty}x '{product.title}' to cart.",
+                    "product_id": str(product.id),
+                    "quantity": qty,
+                }
+
+            elif tool_name == "update_cart":
+                if not cart:
+                    return {"error": "Active cart session is required."}
+
+                item_id_str = arguments.get("item_id")
+                if not item_id_str:
+                    return {"error": "item_id is required."}
+
+                try:
+                    item_uuid = uuid.UUID(item_id_str)
+                except Exception:
+                    return {"error": f"Invalid item_id: '{item_id_str}'"}
+
+                it_res = await db.execute(
+                    select(CartItem).where(CartItem.id == item_uuid, CartItem.cart_id == cart.id)
+                )
+                cart_item = it_res.scalar_one_or_none()
+                if not cart_item:
+                    return {"error": "Cart item not found."}
+
+                if "quantity" in arguments:
+                    new_qty = int(arguments["quantity"])
+                    if new_qty <= 0:
+                        await db.delete(cart_item)
+                        await db.commit()
+                        return {"success": True, "message": "Item removed from cart."}
+                    else:
+                        cart_item.quantity = min(new_qty, 10)
+
+                if "gift_wrap" in arguments:
+                    cart_item.gift_wrap = bool(arguments["gift_wrap"])
+
+                await db.commit()
+                return {"success": True, "message": "Cart item updated successfully."}
+
+            elif tool_name == "remove_from_cart":
+                if not cart:
+                    return {"error": "Active cart session is required."}
+
+                item_id_str = arguments.get("item_id")
+                if not item_id_str:
+                    return {"error": "item_id is required."}
+
+                try:
+                    item_uuid = uuid.UUID(item_id_str)
+                except Exception:
+                    return {"error": f"Invalid item_id: '{item_id_str}'"}
+
+                it_res = await db.execute(
+                    select(CartItem).where(CartItem.id == item_uuid, CartItem.cart_id == cart.id)
+                )
+                cart_item = it_res.scalar_one_or_none()
+                if not cart_item:
+                    return {"error": "Cart item not found in cart."}
+
+                await db.delete(cart_item)
+                await db.commit()
+                return {"success": True, "message": "Item removed from cart."}
 
             elif tool_name == "get_order_status":
                 num = arguments.get("order_number", "").strip().upper()

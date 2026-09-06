@@ -472,5 +472,23 @@ export const api = {
       formData.append("question", question);
       return request<any>("/ai/faq", { method: "POST", body: formData }, true);
     }
+  },
+
+  // Admin Portal Services
+  admin: {
+    getCustomers: (q?: string) => {
+      const params = q ? `?q=${encodeURIComponent(q)}` : "";
+      return request<any[]>(`/admin/customers${params}`);
+    },
+    getAnalytics: () => request<any>("/admin/analytics"),
+    getInventory: () => request<any>("/admin/inventory"),
+    getReviews: () => request<any[]>("/admin/reviews"),
+    moderateReview: (reviewId: string, payload: { is_approved?: boolean; is_flagged?: boolean }) =>
+      request<any>(`/admin/reviews/${reviewId}/moderate`, { method: "PATCH", body: JSON.stringify(payload) }),
+    getSettings: () => request<Record<string, any>>("/admin/settings"),
+    updateSetting: (key: string, value: any, description?: string) =>
+      request<any>("/admin/settings", { method: "PUT", body: JSON.stringify({ key, value, description }) }),
+    getAuditLogs: (limit = 50, offset = 0) =>
+      request<any[]>(`/admin/audit-logs?limit=${limit}&offset=${offset}`),
   }
 };
