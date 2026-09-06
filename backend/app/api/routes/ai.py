@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user, get_current_user_optional
 from app.core.database import get_db
-from app.models.product import Product
+from app.models.product import Product, ProductReview
 from app.models.user import AIChatSession, AIChatMessage
 from app.models.cart import Cart
 from app.models.order import Order

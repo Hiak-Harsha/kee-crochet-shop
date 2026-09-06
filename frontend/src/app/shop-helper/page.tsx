@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles, Send, Upload, Heart, Image as ImageIcon, ShoppingCart, MessageSquare, Paintbrush, ArrowRight, Trash2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { api } from "@/lib/api";
 import Link from "next/link";
 
 export default function ShopHelperPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"shopper" | "color">("shopper");
 
   // AI Chat States
@@ -114,10 +116,11 @@ export default function ShopHelperPage() {
       setMessages((prev) => [...prev, { role: "assistant", content: response.reply }]);
       
       if (response.recommended_product_ids && response.recommended_product_ids.length > 0) {
+        const recIds = response.recommended_product_ids;
         // Map recommended IDs to full product catalog
         const matches = catalog.filter((p) => 
-          response.recommended_product_ids.includes(String(p.id)) || 
-          response.recommended_product_ids.includes(p.slug)
+          recIds.includes(String(p.id)) || 
+          recIds.includes(p.slug)
         );
         setRecommendedProducts(matches);
       } else {
@@ -137,7 +140,7 @@ export default function ShopHelperPage() {
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) {
       alert("Please sign in to add items to your shopping bag.");
-      window.location.href = "/dashboard?tab=auth";
+      router.push("/dashboard?tab=auth");
       return;
     }
 

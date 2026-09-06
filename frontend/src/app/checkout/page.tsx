@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Sparkles, CreditCard, Clock, Calendar, Check, AlertCircle } from "lucide-react";
+import { Shield, CreditCard, Clock, Check, AlertCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { api } from "@/lib/api";
+import { api, Cart, CartQuote, Order } from "@/lib/api";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -20,21 +20,21 @@ export default function CheckoutPage() {
   const [deliverySlot, setDeliverySlot] = useState("standard");
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponError, setCouponError] = useState("");
 
   // Payment/Order Flow States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [createdOrder, setCreatedOrder] = useState<any>(null);
-  
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+
   // Razorpay Mock Dialog
   const [showRzpModal, setShowRzpModal] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
-  // Cart preview info
-  const [cartPreview, setCartPreview] = useState<any>(null);
+  // Cart & Pricing quote info (Server Authoritative)
+  const [cartPreview, setCartPreview] = useState<Cart | null>(null);
+  const [quote, setQuote] = useState<CartQuote | null>(null);
 
   // Load Razorpay Checkout SDK dynamically on mount
   useEffect(() => {
@@ -55,16 +55,22 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Load cart summary
+    // Load cart summary and server quote
     const loadCartPreview = async () => {
       try {
-        const data = await api.cart.get();
-        if (!data || !data.items || data.items.length === 0) {
+        const [cartData, quoteData] = await Promise.all([
+          api.cart.get(),
+          api.cart.getQuote(null),
+        ]);
+
+        if (!cartData || !cartData.items || cartData.items.length === 0) {
           setError("Your shopping bag is empty. Please add items to checkout.");
           router.push("/cart");
           return;
         }
-        setCartPreview(data);
+
+        setCartPreview(cartData);
+        setQuote(quoteData);
       } catch (e: any) {
         console.error("Failed to load cart summary:", e);
         setError("Failed to retrieve your shopping bag details. Please verify your connection.");
@@ -72,6 +78,45 @@ export default function CheckoutPage() {
     };
     loadCartPreview();
   }, [router]);
+
+  const handleApplyCoupon = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setCouponError("");
+    const code = couponCode.trim().toUpperCase();
+
+    if (!code) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+
+    try {
+      // 1. Authoritative server-side validation
+      await api.coupons.validate(code, quote?.subtotal || cartPreview?.subtotal || 0);
+
+      // 2. Fetch updated authoritative quote
+      const newQuote = await api.cart.getQuote(code);
+      setQuote(newQuote);
+      setAppliedCoupon(code);
+      setCouponError("");
+    } catch (err: any) {
+      console.error("Coupon validation failed:", err);
+      setCouponError(err.message || "Invalid or inapplicable coupon code.");
+      setAppliedCoupon(null);
+    }
+  };
+
+  const handleRemoveCoupon = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+    try {
+      const newQuote = await api.cart.getQuote(null);
+      setQuote(newQuote);
+    } catch (err: any) {
+      console.error("Failed to reset quote:", err);
+    }
+  };
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,21 +161,21 @@ export default function CheckoutPage() {
       const order = await api.orders.create(payload);
       setCreatedOrder(order);
 
-      // Check if this is a mock order (sandbox mode when Razorpay credentials are not configured)
+      // Check if this is a mock order (sandbox mode in non-production)
       if (order.razorpay_order_id && order.razorpay_order_id.startsWith("rzp_mock")) {
         setShowRzpModal(true);
         setLoading(false);
       } else {
-        // Trigger the REAL Razorpay Checkout SDK
+        // Trigger the real Razorpay Checkout SDK
         if (!(window as any).Razorpay) {
-          throw new Error("Razorpay payment gateway SDK failed to load. Please verify your connection.");
+          throw new Error("Razorpay payment gateway SDK failed to load. Please verify your internet connection.");
         }
-        
+
         const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
         if (!rzpKey) {
           throw new Error("Razorpay Key ID is not configured (NEXT_PUBLIC_RAZORPAY_KEY_ID is missing). Real payments cannot be processed.");
         }
-        
+
         const options = {
           key: rzpKey,
           amount: Math.round(order.total * 100), // Amount in paise
@@ -149,11 +194,11 @@ export default function CheckoutPage() {
               };
               await api.orders.verifyPayment(verifyPayload);
               setPaymentSuccess(true);
-              
+
               // Clear cart counts
               localStorage.setItem("cart_count", "0");
               window.dispatchEvent(new Event("cart-updated"));
-              
+
               setTimeout(() => {
                 router.push("/dashboard?tab=orders");
               }, 2000);
@@ -174,7 +219,7 @@ export default function CheckoutPage() {
           modal: {
             ondismiss: function () {
               setLoading(false);
-              setError("Payment was cancelled by the user.");
+              setError("Payment window was dismissed.");
             },
           },
         };
@@ -197,13 +242,13 @@ export default function CheckoutPage() {
       order_id: createdOrder.id,
       razorpay_order_id: createdOrder.razorpay_order_id || "rzp_mock_order_12345",
       razorpay_payment_id: `pay_mock_${Math.random().toString(36).substring(2, 10)}`,
-      razorpay_signature: "mock_signature"
+      razorpay_signature: "mock_signature",
     };
 
     try {
       await api.orders.verifyPayment(verifyPayload);
       setPaymentSuccess(true);
-      
+
       // Clear cart counts
       localStorage.setItem("cart_count", "0");
       window.dispatchEvent(new Event("cart-updated"));
@@ -211,7 +256,7 @@ export default function CheckoutPage() {
       setTimeout(() => {
         setShowRzpModal(false);
         router.push("/dashboard?tab=orders");
-      }, 2000);
+      }, 1500);
     } catch (e: any) {
       console.error("Mock payment verification failed", e);
       setError(e.message || "Mock payment verification failed.");
@@ -220,43 +265,12 @@ export default function CheckoutPage() {
     }
   };
 
-  const subtotal = cartPreview?.subtotal || 0;
-  const shippingFee = subtotal >= 999 ? 0 : 60;
-  const total = Math.max(0, subtotal + shippingFee - couponDiscount);
-
-  const handleApplyCoupon = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setCouponError("");
-    const code = couponCode.trim().toUpperCase();
-    
-    if (!code) {
-      setCouponError("Please enter a coupon code");
-      return;
-    }
-    
-    if (code === "WELCOME10") {
-      setAppliedCoupon(code);
-      setCouponDiscount(Math.round(subtotal * 0.10));
-    } else if (code === "KEE15") {
-      setAppliedCoupon(code);
-      setCouponDiscount(Math.round(subtotal * 0.15));
-    } else if (code === "FREESHIP") {
-      setAppliedCoupon(code);
-      setCouponDiscount(shippingFee);
-    } else {
-      setCouponError("Invalid coupon code. Try WELCOME10, KEE15, or FREESHIP!");
-      setAppliedCoupon(null);
-      setCouponDiscount(0);
-    }
-  };
-
-  const handleRemoveCoupon = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setAppliedCoupon(null);
-    setCouponDiscount(0);
-    setCouponCode("");
-    setCouponError("");
-  };
+  // Server-authoritative financials
+  const subtotal = quote?.subtotal ?? cartPreview?.subtotal ?? 0;
+  const giftWrapFee = quote?.gift_wrap_fee ?? cartPreview?.gift_wrap_fee ?? 0;
+  const shippingFee = quote?.shipping_fee ?? cartPreview?.shipping_fee ?? 0;
+  const couponDiscount = quote?.coupon_discount ?? 0;
+  const total = quote?.total ?? cartPreview?.total ?? 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-screen">
@@ -275,7 +289,7 @@ export default function CheckoutPage() {
           {/* Shipping Form Panel */}
           <form onSubmit={handlePlaceOrder} className="lg:col-span-2 space-y-6 bg-white p-6 sm:p-8 rounded-cozy border border-secondary/50 shadow-sm">
             <h2 className="font-extrabold text-lg text-foreground pb-4 border-b border-secondary/30">Shipping Details</h2>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="text-xs font-bold text-foreground/75">Full Name *</label>
@@ -376,19 +390,23 @@ export default function CheckoutPage() {
                 <button
                   type="button"
                   onClick={() => setDeliverySlot("standard")}
-                  className={`p-4 rounded-xl border text-left flex flex-col justify-between transition ${deliverySlot === "standard" ? "border-primary bg-primary/5 text-primary" : "border-secondary hover:bg-secondary/10"}`}
+                  className={`p-4 rounded-xl border text-left flex flex-col justify-between transition ${
+                    deliverySlot === "standard" ? "border-primary bg-primary/5 text-primary" : "border-secondary hover:bg-secondary/10"
+                  }`}
                 >
                   <span className="font-bold text-sm">Standard Shipping</span>
                   <span className="text-xs text-foreground/60 mt-1">Delivered in 3-5 working days.</span>
                 </button>
-                
+
                 <button
                   type="button"
                   onClick={() => setDeliverySlot("festival")}
-                  className={`p-4 rounded-xl border text-left flex flex-col justify-between transition ${deliverySlot === "festival" ? "border-primary bg-primary/5 text-primary" : "border-secondary hover:bg-secondary/10"}`}
+                  className={`p-4 rounded-xl border text-left flex flex-col justify-between transition ${
+                    deliverySlot === "festival" ? "border-primary bg-primary/5 text-primary" : "border-secondary hover:bg-secondary/10"
+                  }`}
                 >
                   <span className="font-bold text-sm flex items-center gap-1">Festival Rush Slot 🎁</span>
-                  <span className="text-xs text-foreground/60 mt-1">Expedited matching for Rakhi / Janmashtami.</span>
+                  <span className="text-xs text-foreground/60 mt-1">Expedited matching for special gifting occasions.</span>
                 </button>
               </div>
             </div>
@@ -398,22 +416,22 @@ export default function CheckoutPage() {
               disabled={loading}
               className="w-full bg-primary text-white hover:bg-primary/95 py-3.5 rounded-full font-bold shadow-md hover:shadow-lg transition text-base disabled:opacity-50"
             >
-              {loading ? "Placing Order..." : "Confirm & Proceed to Payment"}
+              {loading ? "Preparing Payment..." : `Pay ₹${total.toFixed(2)} with Razorpay`}
             </button>
           </form>
 
           {/* Checkout Bag Summary Card */}
           <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-cozy border border-secondary/50 shadow-sm space-y-6">
+            <div className="bg-white p-6 rounded-cozy border border-secondary/50 shadow-sm space-y-6 sticky top-24">
               <h3 className="font-bold text-lg text-foreground border-b border-secondary/30 pb-4">Order Preview</h3>
-              
+
               <div className="space-y-4 max-h-48 overflow-y-auto pr-1">
-                {cartPreview?.items?.map((item: any, idx: number) => (
+                {cartPreview?.items?.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center text-sm">
                     <span className="text-foreground/80 font-medium line-clamp-1 flex-1 pr-4">
                       {item.product?.title} <span className="text-xs text-foreground/45 font-bold">x{item.quantity}</span>
                     </span>
-                    <span className="font-bold text-foreground">₹{item.product?.price * item.quantity}</span>
+                    <span className="font-bold text-foreground">₹{(item.unit_price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -449,21 +467,27 @@ export default function CheckoutPage() {
               <div className="space-y-3.5 text-sm pt-4 border-t border-secondary/20">
                 <div className="flex justify-between text-foreground/85">
                   <span>Cart Subtotal</span>
-                  <span>₹{subtotal}</span>
+                  <span className="font-semibold">₹{subtotal.toFixed(2)}</span>
                 </div>
+                {giftWrapFee > 0 && (
+                  <div className="flex justify-between text-foreground/85">
+                    <span>Gift Wrapping Fee</span>
+                    <span className="font-semibold">₹{giftWrapFee.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-foreground/85">
-                  <span>Shipping & Handling</span>
-                  <span>{shippingFee === 0 ? "FREE" : `₹${shippingFee}`}</span>
+                  <span>Shipping Fee</span>
+                  <span>{shippingFee === 0 ? <span className="text-emerald-600 font-bold">FREE</span> : `₹${shippingFee.toFixed(2)}`}</span>
                 </div>
                 {couponDiscount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-semibold bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100/50">
-                    <span>Discount ({appliedCoupon})</span>
-                    <span>-₹{couponDiscount}</span>
+                    <span>Coupon Discount</span>
+                    <span>-₹{couponDiscount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-base font-extrabold text-foreground border-t border-secondary/20 pt-4">
                   <span>Total Due</span>
-                  <span>₹{total}</span>
+                  <span className="text-primary text-xl font-black">₹{total.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -492,7 +516,7 @@ export default function CheckoutPage() {
             <div className="p-6 space-y-6 text-center">
               <div className="space-y-1">
                 <p className="text-xs text-white/55">Paying to Kee Crochet</p>
-                <p className="text-3xl font-black">₹{createdOrder.total || total}</p>
+                <p className="text-3xl font-black">₹{createdOrder.total?.toFixed(2) || total.toFixed(2)}</p>
                 <p className="text-[10px] text-white/45 font-mono mt-1">Order Ref: {createdOrder.order_number}</p>
               </div>
 
